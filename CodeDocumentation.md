@@ -158,7 +158,7 @@ EasyFont(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight = DWRITE_FONT_
 ```
 
 **string FontName** 字体名称，需要系统中装了这个字体。\
-**int SIZE** 字体大小，单位为像素。
+**int SIZE** 字体大小，单位为像素。\
 **DWRITE_FONT_WEIGHT FontWeight** 字体粗细，默认为正常。\
 **DWRITE_FONT_STYLE FontStyle** 字体斜体样式，默认为正常。
 
@@ -730,6 +730,7 @@ void RenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float 
 
 9.1 - 2025.6.20\
 修复了已知bug。
+
 
 
 By MrJayden.
