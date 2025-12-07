@@ -8,6 +8,8 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <queue>
+#include <chrono>
 
 // Direct2D
 #include <d2d1_1.h>
@@ -16,6 +18,15 @@
 #include <d3d11.h>
 #include <d2d1_1helper.h>
 #include <dxgi1_2.h>
+
+// wincodec
+#include <wincodec.h>
+
+#include <iconv.h>
+
+#include <shlwapi.h>
+
+using namespace std;
 
 namespace EasyPainting
 {
@@ -34,15 +45,22 @@ namespace EasyPainting
     extern double ConversionHeight;
 
     extern bool EasyPaintingStartFlag;
+    extern bool enableVSync;
+
+    extern mutex fpsMutex;
+    extern int fpsCounter;
+    extern int showFPS;
+
+    extern D2D1_BITMAP_INTERPOLATION_MODE easyInterpolationMode;
+
+    struct __Easy_Font_Info
+    {
+        string FontName;
+        float SIZE;
+        DWRITE_FONT_WEIGHT FontWeight;
+        DWRITE_FONT_STYLE FontStyle;
+    };
 };
-// wincodec
-#include <wincodec.h>
-
-#include <iconv.h>
-
-#include <shlwapi.h>
-
-using namespace std;
 
 // EasyPainting Point
 class DXY;
@@ -98,7 +116,9 @@ public:
     EasyPixel(unsigned char a, unsigned char r, unsigned char g, unsigned char b);
     EasyPixel(unsigned char r, unsigned char g, unsigned char b);
     EasyPixel(COLORREF color);
+    EasyPixel(D2D1_COLOR_F color);
     operator COLORREF();
+    operator D2D1_COLOR_F();
 };
 
 typedef EasyPixel EasyColor;
@@ -109,7 +129,6 @@ public:
     ID2D1Bitmap1 *image = nullptr;
     ID2D1DeviceContext **pRenderTarget;
     EasyPixel MatteColor;
-    string name;
     float Width = 0, Height = 0;
     SURFACE(string filename, int width, int height, EasyPixel MatteColor, ID2D1DeviceContext **pRenderTarget = &EasyPainting::pRenderTarget);
     SURFACE();
@@ -120,8 +139,13 @@ public:
     void DrawItDirect(int x, int y, int width, int height);
     void DrawItFrames(int x, int y, int width, int height, int columns = 1, int frames = 0, float scaling = 1);
     void DrawItReverse(int x, int y, int width, int height, int reverse, float scaling = 1, int rotation = 0);
+
+    void SetRenderTarget(ID2D1DeviceContext **pRenderTarget);
+    void CreateFromMemory(vector<vector<EasyPixel>> &vec);
+    void CopyFromMemory(vector<vector<EasyPixel>> &vec);
+
     void Release(void);
-    void LoadIt(void);
+    void LoadIt(string filename);
 };
 typedef SURFACE EasySurface;
 
@@ -129,23 +153,40 @@ class EasyFont
 {
 public:
     IDWriteTextFormat *pFont = nullptr;
-    string FontName;
-    float SIZE;
-    DWRITE_FONT_WEIGHT FontWeight;
-    DWRITE_FONT_STYLE FontStyle;
+
     EasyFont(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight = DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE FontStyle = DWRITE_FONT_STYLE_NORMAL);
     EasyFont(void);
     ~EasyFont(void);
     void Create(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight = DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE FontStyle = DWRITE_FONT_STYLE_NORMAL);
     void Print(string text, int x, int y, EasyPixel color = {255, 0, 0, 0}, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-    void LoadIt(void);
+    void LoadIt(EasyPainting::__Easy_Font_Info info);
+    void Release(void);
 };
 
 // EasyPainting Buffer
-class EasyBuffer
+class EasyBufferBase
 {
 public:
     ID2D1DeviceContext *pBufferDevice;
+
+    void DrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness);
+    void DrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
+    void DrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY);
+    void DrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness);
+
+    void FillRectangle(int x, int y, int width, int height, EasyPixel color);
+    void FillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY);
+    void FillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY);
+
+    void Clear(EasyPixel color);
+
+    operator ID2D1DeviceContext *();
+    operator ID2D1DeviceContext **();
+};
+
+class EasyBuffer : public EasyBufferBase
+{
+public:
     ID2D1Bitmap1 *BufferBitmap;
     int width, height;
     mutex mtx;
@@ -154,12 +195,27 @@ public:
     void StartUp(int width, int height);
     void DrawStart(void);
     void DrawEnd(void);
-    void DrawToMain(int x, int y, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-    void Clear(EasyPixel color);
+    void Render(int x, int y, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
     void Release(void);
-    operator ID2D1DeviceContext *();
-    operator ID2D1DeviceContext **();
+
+    ~EasyBuffer();
 };
+
+class EasyPaintingScreenBuffer : public EasyBufferBase
+{
+    friend void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor);
+
+protected:
+    EasyPaintingScreenBuffer();
+    EasyPaintingScreenBuffer(const EasyPaintingScreenBuffer &other) = delete;
+    EasyPaintingScreenBuffer &operator=(const EasyPaintingScreenBuffer &other) = delete;
+
+public:
+    void DrawStart();
+    void DrawEnd();
+};
+
+extern EasyPaintingScreenBuffer *easyScreenBuffer;
 
 // EasyPainting Effect
 class EasyEffect
@@ -171,17 +227,25 @@ public:
 
     void StartUp(EasySurface *surface, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
     void StartUp(ID2D1Bitmap1 *bitmap, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-    void SetBaseBitmap(ID2D1Bitmap1 *bitmap);
-    void SetBaseBitmap(EasySurface *surface);
     void SetInput(ID2D1Bitmap1 *bitmap, UINT32 index);
     void SetInput(ID2D1Effect *effect, UINT32 index);
     template <typename T>
     void SetValue(UINT32 prop, T &&value);
     void PushEffect(REFCLSID effectId);
     void PopEffect(void);
-    void Render(int x, int y, float rotation = 0, int midpointx = 0, int midpointy = 0);
+    void Render(int x, int y, float rotation = 0, int midpointx = 0, int midpointy = 0, int reverse = 0);
     void Release(void);
+
+    void PushGaussianBlur(float standardDeviation);
+    void PushScale(float scaleX, float scaleY);
+    void PushBrightness(float brightness);
+    typedef D2D1_MATRIX_5X4_F ColorMatrix;
+    void PushColorMatrix(ColorMatrix matrix);
+    void PushShadow(float standardDeviation, EasyPixel color);
+    void PushCrop(int x, int y, int width, int height);
+
     operator ID2D1Effect *();
+    ~EasyEffect();
 };
 
 // EasyPainting GeometryPath
@@ -198,13 +262,36 @@ public:
     void DrawGeometry(EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
     void FillGeometry(EasyPixel color, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
     void Release();
+
+    ~EasyGeometryPath();
 };
+
+class EasyPaintingDevice
+{
+    friend void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor);
+
+private:
+    EasyPaintingDevice();
+    EasyPaintingDevice(const EasyPaintingDevice &other) = delete;
+    EasyPaintingDevice &operator=(const EasyPaintingDevice &other) = delete;
+
+public:
+    void SetVSync(bool vsync);
+
+    void SetWindow(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor = RGB(255, 255, 255));
+
+    void SetInterpolationMode(int mode);
+
+    int GetFPS();
+};
+
+extern EasyPaintingDevice *easyPaintingDevice;
 
 // EasyPainting Auxiliary function
 HBITMAP CreatePureColorBitmap(COLORREF cNewColor, LONG width, LONG height);
 HBITMAP GetScalingBitmap(HBITMAP p_bitmap, int width, int height, int OldWidth, int OldHeight);
 HBITMAP GetScalingBitmap_Delete(HBITMAP p_bitmap, int width, int height, int OldWidth, int OldHeight);
-HBITMAP MatteBitmap(HBITMAP p_bitmap, int width, int height, COLORREF MatteColor);
+HBITMAP MaskBitmap(HBITMAP p_bitmap, int width, int height, COLORREF maskColor);
 HBITMAP CreateMaskBitmapWithTolerance(HBITMAP hSourceBitmap, COLORREF transparentColor, int tolerance);
 HBITMAP GetSelectedBitmap(HBITMAP p_bitmap, int x, int y, int width, int height);
 HBITMAP LoadBitmapFromFile(string filename);
@@ -247,12 +334,12 @@ ID2D1Bitmap1 *CreatePureColorBitmap1(ID2D1DeviceContext *pDeviceContext, EasyPix
 ID2D1Bitmap1 *CreateNullBitmap1(ID2D1DeviceContext *pDeviceContext, UINT width, UINT height);
 void RenderBitmap1(ID2D1DeviceContext *pDeviceContext, ID2D1Bitmap1 *pBitmap, float x, float y);
 
-void LoadBitmapFromFileToPixel(string file_path, vector<vector<EasyPixel>> &vec);
-void SaveBitmapToFileFromData(string file_path, vector<vector<EasyPixel>> &vec);
+void EasyLoadBitmapFromFile(string file_path, vector<vector<EasyPixel>> &vec);
+void EasySaveBitmapToFile(string file_path, vector<vector<EasyPixel>> &vec);
 
-void EasyEnableConsoleInterface();
+void EasyCreateConsoleWindow();
 
-ID2D1DeviceContext *EasyGetMainBuffer();
+ID2D1DeviceContext *EasyGetScreenBuffer();
 
 // EasyPainting Math
 extern const double PI;
@@ -272,6 +359,9 @@ double EasyPointDistance(EasyPoint first, EasyPoint second);
 extern const int EASY_TURNLR;
 extern const int EASY_TURNUD;
 
+extern const int EASY_LINEAR_MODE;
+extern const int EASY_NEAREST_MODE;
+
 void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor = RGB(255, 255, 255));
 void DrawStart(void);
-void DrawEnd(bool enableVSync = true);
+void DrawEnd();

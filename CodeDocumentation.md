@@ -62,7 +62,7 @@ void DrawEnd(bool enableVSync = true);
 
 #### 2.3.1 构造
 
-构造方式有两种：\
+构造方式有三种：\
 第一种，使用构造函数
 
 头部
@@ -79,6 +79,15 @@ SURFACE::SURFACE(string filename, int width, int height, EasyPixel MatteColor, I
 
 第二种，使用Create成员函数\
 它的参数和构造函数完全相同，不介绍。
+
+第三种，使用CreateFromMemory成员函数\
+这种构造请务必在EasyPaintingStart之后调用。
+头部如下：
+```cpp
+void CreateFromMemory(vector<vector<EasyPixel>> &vec);
+```
+将vector的内容作为位图渲染。
+
 
 注意在EasyPaintingStart之前构造的，它们会在EasyPaintingStart时全部统一加载。
 
@@ -145,6 +154,25 @@ void DrawIt(int x, int y, int width, int height, float scaling = 1, float rotati
 
 调用Release成员函数释放位图资源，可以使用Create成员函数重新创建。
 
+析构时候会自动释放。
+
+#### 2.3.4 其他
+
+可以手动编辑像素，并使用CopyFromMemory函数上传，注意这个二维vector的大小必须和原图一样。
+头部：
+
+```cpp
+void CopyFromMemory(vector<vector<EasyPixel>> &vec);
+```
+
+使用一个二维EasyPixel数组上传像素。
+
+可以重新设定渲染目标，使用SetRenderTarget函数
+头部：
+```cpp
+void SetRenderTarget(ID2D1DeviceContext **pRenderTarget);
+```
+
 
 ### 2.4 EasyFont 类，字体类
 
@@ -182,11 +210,21 @@ void Print(string text, int x, int y, EasyPixel color = {255, 0, 0, 0}, ID2D1Dev
 **EasyPixel color** 渲染颜色，默认为黑色\
 **ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
 
+#### 2.4.3 释放
+
+使用Release函数释放，头部如下:
+
+```cpp
+void Release();
+```
+
+析构时候会自动释放。
+
 ### 2.5 EasyBuffer 类，缓冲区类
 
 该类表示一个缓冲区，可以用来渲染到主缓冲区上。前文提到多次的渲染目标就是这个类，传入渲染目标时，可以直接整个传入，会自动转化为ID2D1DeviceContext**。
 
-全局缓冲区应该用EasyGetMainBuffer()函数获取。
+全局缓冲区应该用EasyGetScreenBuffer()函数获取。
 
 #### 2.5.1 创建
 
@@ -222,10 +260,10 @@ void Clear(EasyPixel color);
 
 #### 2.5.3 输出
 
-使用DrawToMain函数渲染到另一个缓冲区上，头部如下:
+使用Render函数渲染到另一个缓冲区上，头部如下:
 
 ```cpp
- void DrawToMain(int x, int y, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
+ void Render(int x, int y, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
 ```
 
 **int x** 渲染x坐标\
@@ -240,10 +278,32 @@ void Clear(EasyPixel color);
 void Release();
 ```
 
+析构时候会自动释放。
+
+#### 2.5.6 几何
+
+支持如下函数
+
+```cpp
+void DrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness);
+void DrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
+void DrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY);
+void DrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness);
+void FillRectangle(int x, int y, int width, int height, EasyPixel color);
+void FillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY);
+void FillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY);
+```
+
+与EasyGeometry函数集类似，可以参照下面的说明。
+
+#### 2.5.7 easyScreenBuffer对象
+
+该对象表示屏幕缓冲区，成员函数和普通Buffer一样，但是不能释放，也不能重新创建。
+
 ### 2.6 EasyEffect 类
 
 该类用于渲染特效，如模糊、阴影等。它表示了一个特效链\
-较为底层，使用难度较大，需有一定Direct2D知识，初次使用可以先跳过。
+*特效链：一个特效链表示一个特效的叠加，每个特效链可以包含多个特效。
 
 #### 2.6.1 创建
 
@@ -286,31 +346,85 @@ void SetInput(ID2D1Effect *effect, UINT32 index);
 
 EasyEffect提供了对ID2D1Effect*的转化，返回最后一层特效。
 
-可以修改原始位图，使用SetBaseBitmap函数，头部如下:
+#### 2.6.3 快速添加特效
 
+为了使用方便，不需要时刻查询文档，EasyEffect提供了快速添加特效的函数，头部如下:
+
+##### 2.6.3.1 高斯模糊
+
+头部如下：
 ```cpp
-void SetBaseBitmap(ID2D1Bitmap1 *bitmap);
-void SetBaseBitmap(EasySurface *surface);
+void PushGaussianBlur(float standardDeviation);
+```
+指定了标准差。
+
+##### 2.6.3.2 缩放
+头部如下：
+```cpp
+void PushScale(float scaleX, float scaleY);
+```
+设定了宽高方向的拉伸比例。
+
+##### 2.6.3.3 亮度
+头部如下：
+```cpp
+void PushBrightness(float brightness);
+```
+指定了亮度变化比例。
+
+##### 2.6.3.4 颜色变换
+
+头部如下：
+```cpp
+void PushColorMatrix(EasyEffect::ColorMatrix matrix);
+```
+用来指定一个颜色变换矩阵。EasyEffect::ColorMatrix本质上是个二维数组，指定了矩阵。
+
+具体的，令每个像素都乘上这个颜色矩阵
+$$
+ [R',G',B',A'] = [R,G,B,A] * matrix
+$$
+
+其中矩阵第五行是偏移项，即每个通道都会加上第五行对应的值。
+
+##### 2.6.3.5 阴影
+
+头部如下：
+```cpp
+void PushShadow(float standardDeviation, EasyPixel color);
 ```
 
-指定原始位图即可。
+指定阴影标准差和阴影颜色。
 
-#### 2.6.3 渲染
+##### 2.6.3.6 裁剪
+
+头部如下：
+```cpp
+void PushCrop(int x, int y, int width, int height);
+```
+
+指定裁剪区域。
+
+#### 2.6.4 渲染
 
 使用Render函数渲染特效链，头部如下:
 ```cpp
-void Render(int x, int y, float rotation = 0, int midpointx = 0, int midpointy = 0);
+void Render(int x, int y, float rotation = 0, int midpointx = 0, int midpointy = 0, int reverse = 0);
 ```
 
 **int x** 渲染位置x坐标\
 **int y** 渲染位置y坐标\
 **float rotation** 旋转角度\
 **int midpointx** 旋转中心x坐标\
-**int midpointy** 旋转中心y坐标
+**int midpointy** 旋转中心y坐标\
+**int reverse** 0为正常\
+传入EASY_TURNLR表示左右翻转，\
+传入EASY_TURNUD表示上下翻转。\
+传入EASY_TURNLR|EASY_TURNUD表示左右上下都翻转。
 
 注意此处的旋转中心坐标的原点为位图左上角，而不是中心，与EasySurface::DrawItEx函数不同。
 
-#### 2.6.4 释放
+#### 2.6.5 释放
 
 可以通过Release函数释放特效链，头部如下:
 
@@ -324,6 +438,7 @@ void Release();
 void PopEffect();
 ```
 
+析构时候会自动释放。
 
 ### 2.7 EasyGeometry 函数集 与 EasyGeometryPath 类
 
@@ -494,7 +609,10 @@ void FillGeometry(EasyPixel color, ID2D1DeviceContext *pRenderTarget = EasyPaint
 ```cpp
 void Release();
 ```
+
 可以使用StartUp函数进行重新初始化。
+
+析构时候会自动释放。
 
 ### 2.8 EasyPaintingMath 函数集
 
@@ -590,11 +708,11 @@ bool KeyIt(SPRITE in);
 ```
 判断是否按下某个精灵。
 
-### 2.11 EasyEnableConsoleInterface 函数
+### 2.11 EasyCreateConsoleWindow 函数
 
 头部:
 ```cpp
-void EasyEnableConsoleInterface();
+void EasyCreateConsoleWindow();
 ```
 
 用于创建控制台并重定向，便于调试。
@@ -668,6 +786,50 @@ void RenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float 
 
 另外还提供了一些WinGDI的函数，为旧版本遗留，不推荐使用，自行阅读函数头部理解，不介绍。
 
+### 2.14 easyPaintingDevice 对象
+
+一个代表EasyPainting的对象，用于一些全局设置
+
+#### 2.14.1 SetVSync 函数
+
+用于开关垂直同步
+头部如下：
+```cpp
+void SetVSync(bool vsync);
+```
+
+#### 2.14.2 SetWindow 函数
+
+头部如下:
+```cpp
+void SetWindow(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor = RGB(255, 255, 255));
+```
+
+即重置了EasyPaintingStart的参数，注意这个函数效率较低。
+
+#### 2.14.3 GetFPS 函数
+
+头部如下：
+
+```cpp
+int GetFPS();
+```
+
+获得最新一个单位秒的帧率。
+
+#### 2.14.4 SetInterpolationMode 函数
+
+用于设置插值模式，头部如下：
+
+```cpp
+void SetInterpolationMode(int mode);
+```
+
+有两个选项：
+- EASY_LINEAR_MODE 线性插值
+- EASY_NEAREST_MODE 最近插值
+
+
 ## 3.历史
 
 该库诞生于2023.1.10左右。目前为10.0，三周年版本。\
@@ -730,7 +892,6 @@ void RenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float 
 
 9.1 - 2025.6.20\
 修复了已知bug。
-
 
 
 By MrJayden.
