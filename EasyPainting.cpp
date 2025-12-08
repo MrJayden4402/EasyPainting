@@ -1594,25 +1594,29 @@ void EasyEffect::Release()
     }
 }
 
-void EasyEffect::PushGaussianBlur(float standardDeviation)
+EasyEffect &EasyEffect::PushGaussianBlur(float standardDeviation)
 {
     this->PushEffect(CLSID_D2D1GaussianBlur);
 
     const int D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION = 0;
 
     this->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, 3.0f);
+
+    return *this;
 }
 
-void EasyEffect::PushScale(float scaleX, float scaleY)
+EasyEffect &EasyEffect::PushScale(float scaleX, float scaleY)
 {
     this->PushEffect(CLSID_D2D1Scale);
 
     const int D2D1_SCALE_PROP_SCALE = 0;
 
     this->SetValue(D2D1_SCALE_PROP_SCALE, D2D1::Vector2F(scaleX, scaleY));
+
+    return *this;
 }
 
-void EasyEffect::PushBrightness(float brightness)
+EasyEffect &EasyEffect::PushBrightness(float brightness)
 {
     D2D1_MATRIX_5X4_F matrix =
         {
@@ -1627,18 +1631,22 @@ void EasyEffect::PushBrightness(float brightness)
     const int D2D1_COLORMATRIX_PROP_COLOR_MATRIX = 0;
 
     this->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, matrix);
+
+    return *this;
 }
 
-void EasyEffect::PushColorMatrix(ColorMatrix matrix)
+EasyEffect &EasyEffect::PushColorMatrix(ColorMatrix matrix)
 {
     this->PushEffect(CLSID_D2D1ColorMatrix);
 
     const int D2D1_COLORMATRIX_PROP_COLOR_MATRIX = 0;
 
     this->SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX, matrix);
+
+    return *this;
 }
 
-void EasyEffect::PushShadow(float standardDeviation, EasyPixel color)
+EasyEffect &EasyEffect::PushShadow(float standardDeviation, EasyPixel color)
 {
     this->PushEffect(CLSID_D2D1Shadow);
 
@@ -1649,15 +1657,19 @@ void EasyEffect::PushShadow(float standardDeviation, EasyPixel color)
     this->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, standardDeviation);
 
     this->SetValue(D2D1_SHADOW_PROP_COLOR, D2D1_VECTOR_4F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f));
+
+    return *this;
 }
 
-void EasyEffect::PushCrop(int x, int y, int width, int height)
+EasyEffect &EasyEffect::PushCrop(int x, int y, int width, int height)
 {
     this->PushEffect(CLSID_D2D1Crop);
 
     const int D2D1_CROP_PROP_RECT = 0;
 
     this->SetValue(D2D1_CROP_PROP_RECT, D2D1::RectF(x, y, x + width, y + height));
+
+    return *this;
 }
 
 void EasyEffect::Render(int x, int y, float rotation, int midpointx, int midpointy, int reverse)

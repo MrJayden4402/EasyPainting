@@ -18,6 +18,9 @@
 #include <d3d11.h>
 #include <d2d1_1helper.h>
 #include <dxgi1_2.h>
+#include <d2d1effects.h>
+#include <d2d1effects_1.h>
+#include <d2d1effects_2.h>
 
 // wincodec
 #include <wincodec.h>
@@ -236,13 +239,13 @@ public:
     void Render(int x, int y, float rotation = 0, int midpointx = 0, int midpointy = 0, int reverse = 0);
     void Release(void);
 
-    void PushGaussianBlur(float standardDeviation);
-    void PushScale(float scaleX, float scaleY);
-    void PushBrightness(float brightness);
+    EasyEffect &PushGaussianBlur(float standardDeviation);
+    EasyEffect &PushScale(float scaleX, float scaleY);
+    EasyEffect &PushBrightness(float brightness);
     typedef D2D1_MATRIX_5X4_F ColorMatrix;
-    void PushColorMatrix(ColorMatrix matrix);
-    void PushShadow(float standardDeviation, EasyPixel color);
-    void PushCrop(int x, int y, int width, int height);
+    EasyEffect &PushColorMatrix(ColorMatrix matrix);
+    EasyEffect &PushShadow(float standardDeviation, EasyPixel color);
+    EasyEffect &PushCrop(int x, int y, int width, int height);
 
     operator ID2D1Effect *();
     ~EasyEffect();

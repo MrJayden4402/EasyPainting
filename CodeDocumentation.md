@@ -348,27 +348,29 @@ EasyEffect提供了对ID2D1Effect*的转化，返回最后一层特效。
 
 #### 2.6.3 快速添加特效
 
-为了使用方便，不需要时刻查询文档，EasyEffect提供了快速添加特效的函数，头部如下:
+为了使用方便，不需要时刻查询文档，EasyEffect提供了快速添加特效的函数:
+
+这些函数支持链式调用。
 
 ##### 2.6.3.1 高斯模糊
 
 头部如下：
 ```cpp
-void PushGaussianBlur(float standardDeviation);
+EasyEffect &PushGaussianBlur(float standardDeviation);
 ```
 指定了标准差。
 
 ##### 2.6.3.2 缩放
 头部如下：
 ```cpp
-void PushScale(float scaleX, float scaleY);
+EasyEffect &PushScale(float scaleX, float scaleY);
 ```
 设定了宽高方向的拉伸比例。
 
 ##### 2.6.3.3 亮度
 头部如下：
 ```cpp
-void PushBrightness(float brightness);
+EasyEffect &PushBrightness(float brightness);
 ```
 指定了亮度变化比例。
 
@@ -376,7 +378,7 @@ void PushBrightness(float brightness);
 
 头部如下：
 ```cpp
-void PushColorMatrix(EasyEffect::ColorMatrix matrix);
+EasyEffect &PushColorMatrix(EasyEffect::ColorMatrix matrix);
 ```
 用来指定一个颜色变换矩阵。EasyEffect::ColorMatrix本质上是个二维数组，指定了矩阵。
 
@@ -391,7 +393,7 @@ $$
 
 头部如下：
 ```cpp
-void PushShadow(float standardDeviation, EasyPixel color);
+EasyEffect &PushShadow(float standardDeviation, EasyPixel color);
 ```
 
 指定阴影标准差和阴影颜色。
@@ -400,7 +402,7 @@ void PushShadow(float standardDeviation, EasyPixel color);
 
 头部如下：
 ```cpp
-void PushCrop(int x, int y, int width, int height);
+EasyEffect &PushCrop(int x, int y, int width, int height);
 ```
 
 指定裁剪区域。
@@ -740,18 +742,18 @@ public:
 
 该类又名EasyColor。
 
-#### 2.12.2 LoadBitmapFromFileToPixel函数
+#### 2.12.2 EasyLoadBitmapFromFile函数
 
 ```cpp
-void LoadBitmapFromFileToPixel(string file_path, vector<vector<EasyPixel>> &vec);
+void EasyLoadBitmapFromFile(string file_path, vector<vector<EasyPixel>> &vec);
 ```
 
 传入路径，用于将位图加载到像素数组中。vec会被重写，使用方法应该为vec[x][y]。
 
-#### 2.12.3 SaveBitmapToFileFromData函数
+#### 2.12.3 EasySaveBitmapToFile函数
 
 ```cpp
-void SaveBitmapToFileFromData(string file_path, vector<vector<EasyPixel>> &vec);
+void EasySaveBitmapToFile(string file_path, vector<vector<EasyPixel>> &vec);
 ```
 
 传入路径，用于将像素数组保存为位图，vec保存方式和LoadBitmapFromFileToPixel一致。
