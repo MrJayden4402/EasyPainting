@@ -1198,7 +1198,7 @@ void SURFACE::SetRenderTarget(ID2D1DeviceContext **pRenderTarget)
     this->pRenderTarget = pRenderTarget;
 }
 
-void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec)
+void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor)
 {
     using namespace EasyPainting;
 
@@ -1210,7 +1210,7 @@ void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec)
 
     BYTE *pixels = new BYTE[(ori_width * ori_height) << 2];
 
-    this->MatteColor = EasyPixel(0, 0, 0, 0);
+    this->MatteColor = maskColor;
 
     for (UINT y = 0; y < ori_height; y++)
         for (UINT x = 0; x < ori_width; x++)
@@ -1235,7 +1235,7 @@ void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec)
     delete[] pixels;
 }
 
-void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec)
+void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor)
 {
     using namespace EasyPainting;
 
@@ -1246,6 +1246,8 @@ void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec)
     const int ori_height = vec[0].size();
 
     BYTE *pixels = new BYTE[(ori_width * ori_height) << 2];
+
+    this->MatteColor = maskColor;
 
     for (UINT y = 0; y < ori_height; y++)
         for (UINT x = 0; x < ori_width; x++)

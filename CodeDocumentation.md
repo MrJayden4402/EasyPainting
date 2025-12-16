@@ -84,9 +84,9 @@ SURFACE::SURFACE(string filename, int width, int height, EasyPixel MatteColor, I
 这种构造请务必在EasyPaintingStart之后调用。
 头部如下：
 ```cpp
-void CreateFromMemory(vector<vector<EasyPixel>> &vec);
+void CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor);
 ```
-将vector的内容作为位图渲染。
+将vector的数据作加载到位图中。
 
 
 注意在EasyPaintingStart之前构造的，它们会在EasyPaintingStart时全部统一加载。
@@ -162,10 +162,10 @@ void DrawIt(int x, int y, int width, int height, float scaling = 1, float rotati
 头部：
 
 ```cpp
-void CopyFromMemory(vector<vector<EasyPixel>> &vec);
+void CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor);
 ```
 
-使用一个二维EasyPixel数组上传像素。
+使用一个二维EasyPixel数组上传像素，并指定透明色。
 
 可以重新设定渲染目标，使用SetRenderTarget函数
 头部：

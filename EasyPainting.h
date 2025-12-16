@@ -144,8 +144,8 @@ public:
     void DrawItReverse(int x, int y, int width, int height, int reverse, float scaling = 1, int rotation = 0);
 
     void SetRenderTarget(ID2D1DeviceContext **pRenderTarget);
-    void CreateFromMemory(vector<vector<EasyPixel>> &vec);
-    void CopyFromMemory(vector<vector<EasyPixel>> &vec);
+    void CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor = RGB(0, 0, 0));
+    void CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor = RGB(0, 0, 0));
 
     void Release(void);
     void LoadIt(string filename);
