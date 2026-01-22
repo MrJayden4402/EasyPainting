@@ -29,7 +29,7 @@
 
 函数头部:
 ```cpp
-void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor);
+void EasyPaintingStart(HWND window, int windowWidth, int windowHeight, EasyPixel backColor = RGB(255, 255, 255));
 ```
 用于初始化EasyPainting库。\
 **HWND window** 窗口句柄。代表需要渲染到哪个窗口上\
@@ -47,12 +47,10 @@ EasyPainting内部有一个渲染缓冲区，大小是固定的，你的渲染�
 函数头部:
 ```cpp
 void DrawStart();
-void DrawEnd(bool enableVSync = true);
+void DrawEnd();
 ```
 用于开始/结束绘制。\
 调用DrawStart后，可以调用一系列绘图函数，调用DrawEnd后，EasyPainting会将渲染缓冲区的内容全部输出到窗口上。
-
-其中DrawEnd的**enableVSync**参数用于开启/关闭垂直同步，默认开启。
 
 它们必须成对出现，否则会出现未定义行为。
 
@@ -67,15 +65,14 @@ void DrawEnd(bool enableVSync = true);
 
 头部
 ```cpp
-SURFACE::SURFACE(string filename, int width, int height, EasyPixel MatteColor, ID2D1DeviceContext **pRenderTarget)
+EasySurface(string filename, int width, int height, EasyPixel transColor);
 ```
 
 参数\
 **string filename** 加载位图的路径。
 **int width** 位图的宽度，如果为0，则自动获取位图的宽度\
 **int height** 位图的高度，如果为0，则自动获取位图的高度\
-**EasyPixel MatteColor** 透明色，如果位图中有这个颜色，则会被渲染为透明\
-**ID2D1DeviceContext \*\*pRenderTarget** 渲染目标，可以指定EasyBuffer，这个稍后会讲到，默认为主缓冲区。
+**EasyPixel transColor** 透明色，如果位图中有这个颜色，则会被渲染为透明\
 
 第二种，使用Create成员函数\
 它的参数和构造函数完全相同，不介绍。
@@ -95,7 +92,6 @@ void CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor);
 
 方式一:\
 调用DrawItEx成员函数。\
-这个的功能是最完全的。
 
 头部
 ```cpp
@@ -129,8 +125,6 @@ void DrawItEx(int x, int y, int width, int height, int imagex, int imagey, int i
 void DrawIt(int x, int y, int width, int height, float scaling = 1, float rotation = 0, int columns = 1, int frames = 0, int reverse = 0);
 ```
 
-其中功能很多。
-
 **int x** 渲染的x坐标\
 **int y** 渲染的y坐标\
 **int width** 渲染位图的宽度，若为0则使用位图的原始宽度\
@@ -147,6 +141,21 @@ void DrawIt(int x, int y, int width, int height, float scaling = 1, float rotati
 传入EASY_TURNUD表示上下翻转。\
 传入EASY_TURNLR|EASY_TURNUD表示左右上下都翻转。
 
+
+方式三:\
+使用DrawItPoint函数，允许你指定一个任意平行四边形，来绘制位图。
+
+头部
+```cpp
+void DrawItPoint(EasyPoint p0, EasyPoint p1, EasyPoint p2, int imagex = 0, int imagey = 0, int imagewidth = 0, int imageheight = 0);
+```
+**EasyPoint p0** 平行四边形左上角的点\
+**EasyPoint p1** 平行四边形右上角的点\
+**EasyPoint p2** 平行四边形左下角的点\
+**int imagex** 位图裁剪的x坐标\
+**int imagey** 位图裁剪的y坐标\
+**int imagewidth** 位图裁剪的宽度，若为0则使用位图的原始宽度\
+**int imageheight** 位图裁剪的高度，若为0则使用位图的原始高度\
 
 还有DrawItDirect/DrawItFrames/DrawItReverse等函数，都是DrawIt的简化版，对应参数填入即可。
 
@@ -167,11 +176,15 @@ void CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor);
 
 使用一个二维EasyPixel数组上传像素，并指定透明色。
 
-可以重新设定渲染目标，使用SetRenderTarget函数
+可以提出像素数据，使用GetPixelData函数。
+
 头部：
+
 ```cpp
-void SetRenderTarget(ID2D1DeviceContext **pRenderTarget);
+void GetPixelData(vector<vector<EasyPixel>> &vec);
 ```
+
+返回到一个二维EasyPixel数组中。
 
 
 ### 2.4 EasyFont 类，字体类
@@ -182,13 +195,13 @@ void SetRenderTarget(ID2D1DeviceContext **pRenderTarget);
 
 只能使用构造函数构造，头部如下
 ```cpp
-EasyFont(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight = DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE FontStyle = DWRITE_FONT_STYLE_NORMAL);
+EasyFont(string fontName, int fontSize, DWRITE_FONT_WEIGHT fontWeight = DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE fontStyle = DWRITE_FONT_STYLE_NORMAL);
 ```
 
-**string FontName** 字体名称，需要系统中装了这个字体。\
-**int SIZE** 字体大小，单位为像素。\
-**DWRITE_FONT_WEIGHT FontWeight** 字体粗细，默认为正常。\
-**DWRITE_FONT_STYLE FontStyle** 字体斜体样式，默认为正常。
+**string fontName** 字体名称，需要系统中装了这个字体。\
+**int fontSize** 字体大小，单位为像素。\
+**DWRITE_FONT_WEIGHT fontWeight** 字体粗细，默认为正常。\
+**DWRITE_FONT_STYLE fontStyle** 字体斜体样式，默认为正常。
 
 对于后两个参数，具体选项可以参考Microsoft的官方文档。
 
@@ -201,14 +214,55 @@ EasyFont(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight = DWRITE_FONT_
 调用Print函数，头部如下:
 
 ```cpp
-void Print(string text, int x, int y, EasyPixel color = {255, 0, 0, 0}, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
+void Print(string text, float x, float y, EasyPixel color = {255, 0, 0, 0});
 ```
 
 **string text** 要渲染的文本，支持换行符\
 **int x** 渲染x坐标\
 **int y** 渲染y坐标\
 **EasyPixel color** 渲染颜色，默认为黑色\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
+可以传入EasyBrush对象，以使用画刷渲染。
+
+```cpp
+void Print(string text, int x, int y, EasyBrush *brush);
+```
+
+还有拓展的Print函数，PrintEx，头部如下:
+
+```cpp
+void PrintEx(string text, float x, float y, float width, float height, EasyPixel color, EasyPoint center = {0, 0}, float rotation = 0.0f);
+```
+
+**float x** 渲染x坐标\
+**float y** 渲染y坐标\
+**float width** 渲染矩形宽度\
+**float height** 渲染矩形高度\
+**EasyPoint center** 旋转中心\
+**float rotation** 旋转角度\
+
+可以指定一个渲染矩形，文本会自动换行，保证文本在矩形内。
+
+同样，也可以传入EasyBrush对象，以使用画刷渲染。
+
+```cpp
+void PrintEx(string text, float x, float y, float width, float height, EasyBrush *brush, EasyPoint center = {0, 0}, float rotation = 0.0f, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
+```
+
+另外一个拓展的Print函数，也是PrintEx，头部如下:
+
+```cpp
+void PrintEx(string text, float width, float height, EasyPixel color, EasyPoint p0, float angle1 = 0.0f, float angle2 = 90.0f, float scalew = 1.0f, float scaleh = 1.0f);
+```
+
+**float width** 文本矩形宽度\
+**float height** 文本矩形高度\
+**EasyPoint p0** 渲染矩形左上角坐标\
+**float angle1** 渲染矩形顶边旋转角度\
+**float angle2** 渲染矩形左边旋转角度\
+**float scalew** 渲染矩形宽度缩放\
+**float scaleh** 渲染矩形高度缩放
+
+用这个函数可以将文字进行仿射变换。
 
 #### 2.4.3 释放
 
@@ -224,7 +278,7 @@ void Release();
 
 该类表示一个缓冲区，可以用来渲染到主缓冲区上。前文提到多次的渲染目标就是这个类，传入渲染目标时，可以直接整个传入，会自动转化为ID2D1DeviceContext**。
 
-全局缓冲区应该用EasyGetScreenBuffer()函数获取。
+这个类继承自EasySurface类，所以可以像EasySurface类一样渲染到其它缓冲区上，也可以调用EasySurface类的各种函数。
 
 #### 2.5.1 创建
 
@@ -245,9 +299,13 @@ void StartUp(int width, int height);
 
 需要调用DrawStart/DrawEnd成员函数。
 
-对于EasySurface的渲染，只需要直接调用EasySurface的Draw函数即可。注意构造EasySurface时，需要传入当前缓冲区作为渲染目标。
+使用UseAsRenderTarget函数将缓冲区作为渲染目标，头部如下:
 
-对于EasyFont的渲染，需要在Print函数内传入当前缓冲区作为渲染目标。
+```cpp
+void UseAsRenderTarget();
+```
+
+这个函数将该线程的渲染目标设置为该缓冲区，后面的所有渲染操作都会渲染到该缓冲区上，直到其它缓冲区调用该函数。
 
 还有Clear函数，用于清空缓冲区，头部如下:
 
@@ -258,19 +316,7 @@ void Clear(EasyPixel color);
 将color填充到整个缓冲区中
 
 
-#### 2.5.3 输出
-
-使用Render函数渲染到另一个缓冲区上，头部如下:
-
-```cpp
- void Render(int x, int y, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-```
-
-**int x** 渲染x坐标\
-**int y** 渲染y坐标\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
-
-#### 2.5.4 释放
+#### 2.5.3 释放
 
 使用Release函数释放缓冲区，头部如下:
 
@@ -280,25 +326,9 @@ void Release();
 
 析构时候会自动释放。
 
-#### 2.5.6 几何
+#### 2.5.4 easyScreenBuffer指针
 
-支持如下函数
-
-```cpp
-void DrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness);
-void DrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
-void DrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY);
-void DrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness);
-void FillRectangle(int x, int y, int width, int height, EasyPixel color);
-void FillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY);
-void FillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY);
-```
-
-与EasyGeometry函数集类似，可以参照下面的说明。
-
-#### 2.5.7 easyScreenBuffer对象
-
-该对象表示屏幕缓冲区，成员函数和普通Buffer一样，但是不能释放，也不能重新创建。
+它指向屏幕缓冲区对象，该对象的成员函数和普通Buffer一样，但是不能释放，也不能重新创建。
 
 ### 2.6 EasyEffect 类
 
@@ -310,11 +340,9 @@ void FillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY);
 使用StartUp函数。头部如下:
 
 ```cpp
-void StartUp(ID2D1Bitmap1 *bitmap, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-void StartUp(EasySurface *surface, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
+void StartUp(ID2D1Bitmap1 *bitmap);
+void StartUp(EasySurface *surface);
 ```
-
-指定原始位图，以及该特效链的渲染目标缓冲区。
 
 #### 2.6.2 添加特效
 
@@ -380,7 +408,7 @@ EasyEffect &PushBrightness(float brightness);
 ```cpp
 EasyEffect &PushColorMatrix(EasyEffect::ColorMatrix matrix);
 ```
-用来指定一个颜色变换矩阵。EasyEffect::ColorMatrix本质上是个二维数组，指定了矩阵。
+用来指定一个颜色变换矩阵(宽度为4，高度为5)。EasyEffect::ColorMatrix本质上是个二维数组，指定了矩阵。
 
 具体的，令每个像素都乘上这个颜色矩阵
 $$
@@ -426,6 +454,12 @@ void Render(int x, int y, float rotation = 0, int midpointx = 0, int midpointy =
 
 注意此处的旋转中心坐标的原点为位图左上角，而不是中心，与EasySurface::DrawItEx函数不同。
 
+
+还有比较底层的RenderMatrix函数，提供给需要更复杂的变换，头部如下:
+```cpp
+void RenderMatrix(D2D1_MATRIX_3X2_F &matrix);
+```
+
 #### 2.6.5 释放
 
 可以通过Release函数释放特效链，头部如下:
@@ -442,110 +476,11 @@ void PopEffect();
 
 析构时候会自动释放。
 
-### 2.7 EasyGeometry 函数集 与 EasyGeometryPath 类
+### 2.7 EasyGeometryPath 类
 
-#### 2.7.1 EasyDrawRectangle/EasyFillRectangle 函数
+该类用来绘制一个不规则图形。
 
-EasyDrawRectangle函数用于绘制一个空心矩形，头部如下:
-
-```cpp
-void EasyDrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-```
-
-**int x** 矩形左上角x坐标\
-**int y** 矩形左上角y坐标\
-**int width** 矩形宽度\
-**int height** 矩形高度\
-**EasyPixel color** 矩形颜色\
-**float thickness** 线条宽度\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
-
-
-EasyFillRectangle函数用于绘制一个实心矩形，头部如下:
-
-```cpp
-void EasyFillRectangle(int x, int y, int width, int height, EasyPixel color, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-```
-
-其中参数与EasyDrawRectangle函数相同，去除了线条宽度参数。
-
-
-#### 2.7.2 EasyDrawRoundedRectangle/EasyFillRoundedRectangle 函数
-
-EasyDrawRoundedRectangle函数用于绘制一个空心圆角矩形，头部如下:
-
-```cpp
-void EasyDrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY, ID2D1DeviceContext *pRenderTarget =&EasyPainting::pRenderTarget);
-```
-
-**int x** 矩形左上角x坐标\
-**int y** 矩形左上角y坐标\
-**int width** 矩形宽度\
-**int height** 矩形高度\
-**EasyPixel color** 矩形颜色\
-**float thickness** 线条宽度\
-**float radiusX** 圆角x半径\
-**float radiusY** 圆角y半径\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
-
-EasyFillRoundedRectangle函数用于绘制一个实心圆角矩形，头部如下:
-
-```cpp
-void EasyFillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-```
-
-其中参数与EasyDrawRoundedRectangle函数相同，去除了线条宽度参数。
-
-
-#### 2.7.3 EasyDrawEllipse/EasyFillEllipse 函数
-
-EasyDrawEllipse函数用于绘制一个空心椭圆，头部如下:
-
-```cpp
-void EasyDrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-```
-
-**int x** 椭圆中心x坐标\
-**int y** 椭圆中心y坐标\
-**EasyPixel color** 椭圆颜色\
-**float radiusX** 椭圆x半径\
-**float radiusY** 椭圆y半径\
-**float thickness** 线条宽度\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
-
-EasyFillEllipse函数用于绘制一个实心椭圆，头部如下:
-
-```cpp
-void EasyFillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
-```
-
-其中参数与EasyDrawEllipse函数相同，去除了线条宽度参数。
-
-
-#### 2.7.4 EasyDrawLine 函数
-
-该函数用于绘制一条线段，头部如下:
-
-```cpp
-void EasyDrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget, D2D1_CAP_STYLE CapStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE DashStyle = D2D1_DASH_STYLE_SOLID);
-```
-
-**DXY point0** 线段起点\
-**DXY point1** 线段终点\
-**EasyPixel color** 线段颜色\
-**float thickness** 线段粗细\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标\
-**D2D1_CAP_STYLE CapStyle** 线段端点样式，默认为D2D1_CAP_STYLE_ROUND，圆角端点\
-**D2D1_DASH_STYLE DashStyle** 线段样式，默认为D2D1_DASH_STYLE_SOLID，实线
-
-对于后两个参数的详细类型，请参考Microsoft的文档。
-
-
-#### 2.7.5 EasyGeometryPath 类
-
-该类用来绘制一个路径。
-
-##### 2.7.5.1 启动
+##### 2.7.1 初始化
 
 使用StartUp函数，头部如下:
 
@@ -553,7 +488,7 @@ void EasyDrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, ID2D
 void StartUp();
 ```
 
-##### 2.7.5.2 录入点
+##### 2.7.2 录入点
 
 使用FigureStart函数进行开始录制。头部如下:
 
@@ -572,7 +507,7 @@ void FigureEnd(bool close = false);
 
 **bool close** 是否闭合路径，默认为false，不闭合，若闭合，则路径会自动连接起点和终点。
 
-使用AddLine函数进行添加点。头部如下:
+使用AddLine函数添加一条直线。头部如下:
 
 ```cpp
 void AddLine(float x, float y);
@@ -581,30 +516,100 @@ void AddLine(float x, float y);
 **float x** 点x坐标\
 **float y** 点y坐标
 
-##### 2.7.5.3 渲染
+从当前点绘制一条直线到目标点。
+
+
+使用AddQuadraticBezier函数添加一条二次贝塞尔曲线。头部如下:
+
+```cpp
+void AddQuadraticBezier(EasyPoint target, EasyPoint control);
+```
+
+**EasyPoint target** 目标点\
+**EasyPoint control** 控制点
+
+从当前点绘制一条二次贝塞尔曲线到目标点
+
+使用AddBezier函数添加一条三次贝塞尔曲线。头部如下:
+
+```cpp
+void AddBezier(EasyPoint target, EasyPoint control1, EasyPoint control2);
+```
+
+**EasyPoint target** 目标点\
+**EasyPoint control1** 控制点1\
+**EasyPoint control2** 控制点2
+
+从当前点绘制一条三次贝塞尔曲线到目标点
+
+
+使用AddArc函数添加一条圆弧。头部如下:
+
+```cpp
+void AddArc(float x, float y, float radiusX, float radiusY, int sweepDirection = CLOCK_WISE, int arcSize = SMALL_ARC, float rotationAngle = 0.0f);
+```
+
+**float x** 圆心x坐标\
+**float y** 圆心y坐标\
+**float radiusX** 圆弧所对应椭圆的x轴半径\
+**float radiusY** 圆弧所对应椭圆的y轴半径\
+**int sweepDirection** 旋转方向，默认为顺时针，可选值有顺时针EasyGeometryPath::CLOCK_WISE和逆时针EasyGeometryPath::COUNTER_CLOCK_WISE\
+**int arcSize** 圆弧大小，默认为小弧，可选值有大弧EasyGeometryPath::LARGE_ARC和小弧EasyGeometryPath::SMALL_ARC\
+**float rotationAngle** 圆弧所对应椭圆的的旋转角度，默认为0.0f
+
+从当前点绘制一条圆弧到目标点
+
+
+
+##### 2.7.3 渲染
 
 使用DrawGeometry进行路径渲染。头部如下:
 
 ```cpp
-void DrawGeometry(EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
+void DrawGeometry(EasyPixel color, float thickness);
 ```
 **EasyPixel color** 线段颜色\
 **float thickness** 线段粗细\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
+
+可以传入EasyBrush使用画刷渲染。头部如下:
+
+```cpp
+void DrawGeometry(EasyBrush *brush, float thickness);
+```
 
 还可以使用FillGeometry进行填充渲染。头部如下:
 
 ```cpp
-void FillGeometry(EasyPixel color, ID2D1DeviceContext *pRenderTarget = EasyPainting::pRenderTarget);
+void FillGeometry(EasyPixel color);
 ```
 
 **EasyPixel color** 填充颜色\
-**ID2D1DeviceContext \*pRenderTarget** 渲染目标，默认为全局渲染目标
 
 这个函数会填充路径内的区域并渲染。
 
+同样，可以传入EasyBrush使用画刷填充。头部如下:
 
-##### 2.7.5.4 释放
+```cpp
+void FillGeometry(EasyBrush *brush);
+```
+
+有各类Ex版本，
+
+```cpp
+void DrawGeometryEx(EasyBrush &brush, float thickness, EasyPoint p0, float angle1 = 0.0f, float angle2 = 90.0f, float scalew = 1.0f, float scaleh = 1.0f);
+void FillGeometryEx(EasyBrush &brush, EasyPoint p0, float angle1 = 0.0f, float angle2 = 90.0f, float scalew = 1.0f, float scaleh = 1.0f);
+void DrawGeometryEx(EasyPixel color, float thickness, EasyPoint p0, float angle1 = 0.0f, float angle2 = 90.0f, float scalew = 1.0f, float scaleh = 1.0f);
+void FillGeometryEx(EasyPixel color, EasyPoint p0, float angle1 = 0.0f, float angle2 = 90.0f, float scalew = 1.0f, float scaleh = 1.0f);
+
+void DrawGeometryEx(D2D1_MATRIX_3X2_F transform, EasyBrush &brush, float thickness);
+void FillGeometryEx(D2D1_MATRIX_3X2_F transform, EasyBrush &brush);
+void DrawGeometryEx(D2D1_MATRIX_3X2_F transform, EasyPixel color, float thickness);
+void FillGeometryEx(D2D1_MATRIX_3X2_F transform, EasyPixel color);
+```
+
+有指定左上角及两个边方向的版本以及直接指定仿射变换的版本。
+
+##### 2.7.4 释放
 
 使用Release函数进行释放。头部如下:
 
@@ -622,13 +627,14 @@ void Release();
 
 ```cpp
 class DXY;
-class doubleXY;
+class EasyPoint;
 template <class T>
 class templateXY;
 ```
 
-分别存不同类型的坐标，其中DXY和doubleXY有互相转化的重载。
+分别存不同类型的坐标，其中DXY和EasyPoint有互相转化的重载。
 
+EasyPoint为双精度浮点数坐标，DXY为整数坐标。
 
 ```cpp
 inline double toRadians(double degrees);
@@ -664,7 +670,7 @@ int DXYDistance(DXY first, DXY second);
 用于求两个坐标之间的距离。
 
 ```cpp
-double GoRotation(doubleXY x, doubleXY y);
+double GoRotation(EasyPoint x, EasyPoint y);
 ```
 
 用于求一个坐标相对于另一个坐标的角度，使用屏幕坐标系。
@@ -700,7 +706,7 @@ SpritePeek函数使用矩形判断，SpritePeekLine函数使用距离判断。
 该函数集用于获取鼠标输入。
 
 ```cpp
-DXY MouseWinXY(void);
+DXY EasyMousePos(void);
 ```
 
 得到鼠标在窗口中的坐标，这个坐标是对于EasyPainting的主渲染缓冲区而言的。
@@ -761,40 +767,41 @@ void EasySaveBitmapToFile(string file_path, vector<vector<EasyPixel>> &vec);
 ### 2.13 Direct2D/WinGDI辅助函数
 
 ```cpp
-ID2D1Bitmap1 *LoadBitmap1FromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1DeviceContext *DeviceContext = EasyPainting::pRenderTarget);
-ID2D1Bitmap1 *CreateBitmap1FromArray(ID2D1DeviceContext *pDeviceContext, const BYTE *pixelData, UINT width, UINT height);
-ID2D1Bitmap1 *CreatePureColorBitmap1(ID2D1DeviceContext *pDeviceContext, EasyPixel color, int width, int height);
-ID2D1Bitmap1 *CreateNullBitmap1(ID2D1DeviceContext *pDeviceContext, UINT width, UINT height);
-void RenderBitmap1(ID2D1DeviceContext *pDeviceContext, ID2D1Bitmap1 *pBitmap, float x, float y);
+ID2D1Bitmap1 *EasyD2DLoadBitmap1FromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1DeviceContext *DeviceContext = EasyPainting::pRenderTarget);
+ID2D1Bitmap1 *EasyD2DCreateBitmap1FromArray(ID2D1DeviceContext *pDeviceContext, const BYTE *pixelData, UINT width, UINT height);
+ID2D1Bitmap1 *EasyD2DCreatePureColorBitmap1(ID2D1DeviceContext *pDeviceContext, EasyPixel color, int width, int height);
+ID2D1Bitmap1 *EasyD2DCreateNullBitmap1(ID2D1DeviceContext *pDeviceContext, UINT width, UINT height);
+void EasyD2DRenderBitmap1(ID2D1DeviceContext *pDeviceContext, ID2D1Bitmap1 *pBitmap, float x, float y);
 ```
 
-LoadBitmap1FromFile函数用于从文件中读取一个ID2D1Bitmap1对象。\
-CreateBitmap1FromArray函数用于从数组中创建一个ID2D1Bitmap1对象。\
-CreatePureColorBitmap1函数用于创建一个纯色ID2D1Bitmap1对象。\
-CreateNullBitmap1函数用于创建一个空ID2D1Bitmap1对象。\
-RenderBitmap1函数用于渲染一个ID2D1Bitmap1对象。
+EasyD2DLoadBitmap1FromFile函数用于从文件中读取一个ID2D1Bitmap1对象。\
+EasyD2DCreateBitmap1FromArray函数用于从数组中创建一个ID2D1Bitmap1对象。\
+EasyD2DCreatePureColorBitmap1函数用于创建一个纯色ID2D1Bitmap1对象。\
+EasyD2DCreateNullBitmap1函数用于创建一个空ID2D1Bitmap1对象。\
+EasyD2DRenderBitmap1函数用于渲染一个ID2D1Bitmap1对象。
 
 一般比较少用，提供给更底层的操作。
 
-还有对应的ID2D1Bitmap接口的函数，但是推荐使用ID2D1Bitmap1。
+尽管推荐使用ID2D1Bitmap1，但也有对应的ID2D1Bitmap接口的函数。
 
 ```cpp
-ID2D1Bitmap *LoadBitmapFromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1RenderTarget *pRenderTarget = EasyPainting::pRenderTarget);
-ID2D1Bitmap *CreateBitmapFromArray(ID2D1RenderTarget *pRenderTarget, const BYTE *pixelData, UINT width, UINT height);
-ID2D1Bitmap *CreatePureColorBitmap(ID2D1RenderTarget *pRenderTarget, EasyPixel color, int width, int height);
-ID2D1Bitmap *CreateNullBitmap(ID2D1RenderTarget *pRenderTarget, UINT width, UINT height);
-void RenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float x, float y);
+ID2D1Bitmap *EasyD2DLoadBitmapFromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1RenderTarget *pRenderTarget = EasyPainting::pRenderTarget);
+ID2D1Bitmap *EasyD2DCreateBitmapFromArray(ID2D1RenderTarget *pRenderTarget, const BYTE *pixelData, UINT width, UINT height);
+ID2D1Bitmap *EasyD2DCreatePureColorBitmap(ID2D1RenderTarget *pRenderTarget, EasyPixel color, int width, int height);
+ID2D1Bitmap *EasyD2DCreateNullBitmap(ID2D1RenderTarget *pRenderTarget, UINT width, UINT height);
+void EasyD2DRenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float x, float y);
 ```
 
 另外还提供了一些WinGDI的函数，为旧版本遗留，不推荐使用，自行阅读函数头部理解，不介绍。
 
 ### 2.14 easyPaintingDevice 对象
 
-一个代表EasyPainting的对象，用于一些全局设置
+一个指向代表EasyPainting的对象的指针，用于一些全局设置
 
 #### 2.14.1 SetVSync 函数
 
 用于开关垂直同步
+
 头部如下：
 ```cpp
 void SetVSync(bool vsync);
@@ -817,7 +824,7 @@ void SetWindow(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackCol
 int GetFPS();
 ```
 
-获得最新一个单位秒的帧率。
+获得最新一个单位秒的帧数。
 
 #### 2.14.4 SetInterpolationMode 函数
 
@@ -831,6 +838,222 @@ void SetInterpolationMode(int mode);
 - EASY_LINEAR_MODE 线性插值
 - EASY_NEAREST_MODE 最近插值
 
+### 2.15 EasyBrush 类
+
+该类也用于绘制几何图形，但是提供了更丰富的颜色选项。
+
+这个类请在EasyPaintingStart之后Create，否则会出错。
+
+#### 2.15.1 绘制函数
+
+有如下绘制函数。
+
+```cpp
+void DrawRectangle(float x, float y, float width, float height, float thickness);
+void DrawLine(EasyPoint point0, EasyPoint point1, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
+void DrawRoundedRectangle(float x, float y, float width, float height, float thickness, float radiusX, float radiusY);
+void DrawEllipse(float x, float y, float radiusX, float radiusY, float thickness);
+
+void FillRectangle(float x, float y, float width, float height);
+void FillRoundedRectangle(float x, float y, float width, float height, float radiusX, float radiusY);
+void FillEllipse(float x, float y, float radiusX, float radiusY);
+```
+
+还有带仿射变换版本的，只需要加入矩阵参数即可。
+
+```cpp
+void DrawRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, float thickness);
+void DrawLineEx(D2D1_MATRIX_3X2_F transform, EasyPoint point0, EasyPoint point1, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
+void DrawRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, float thickness, float radiusX, float radiusY);
+void DrawEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, float radiusX, float radiusY, float thickness);
+
+void FillRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height);
+void FillRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, float radiusX, float radiusY);
+void FillEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, float radiusX, float radiusY);
+```
+
+##### 2.15.1.1 DrawRectangle/FillRectangle 函数
+
+DrawRectangle函数用于绘制一个空心矩形，头部如下:
+
+```cpp
+void DrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness);
+```
+
+**int x** 矩形左上角x坐标\
+**int y** 矩形左上角y坐标\
+**int width** 矩形宽度\
+**int height** 矩形高度\
+**EasyPixel color** 矩形颜色\
+**float thickness** 线条宽度\
+
+FillRectangle函数用于绘制一个实心矩形，头部如下:
+
+```cpp
+void FillRectangle(int x, int y, int width, int height, EasyPixel color);
+```
+
+其中参数与DrawRectangle函数相同，去除了线条宽度参数。
+
+
+##### 2.15.1.2 DrawRoundedRectangle/FillRoundedRectangle 函数
+
+DrawRoundedRectangle函数用于绘制一个空心圆角矩形，头部如下:
+
+```cpp
+void DrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY);
+```
+
+**int x** 矩形左上角x坐标\
+**int y** 矩形左上角y坐标\
+**int width** 矩形宽度\
+**int height** 矩形高度\
+**EasyPixel color** 矩形颜色\
+**float thickness** 线条宽度\
+**float radiusX** 圆角x半径\
+**float radiusY** 圆角y半径\
+
+FillRoundedRectangle函数用于绘制一个实心圆角矩形，头部如下:
+
+```cpp
+void FillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY);
+```
+
+其中参数与DrawRoundedRectangle函数相同，去除了线条宽度参数。
+
+
+##### 2.15.1.3 DrawEllipse/FillEllipse 函数
+
+DrawEllipse函数用于绘制一个空心椭圆，头部如下:
+
+```cpp
+void DrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness);
+```
+
+**int x** 椭圆中心x坐标\
+**int y** 椭圆中心y坐标\
+**EasyPixel color** 椭圆颜色\
+**float radiusX** 椭圆x半径\
+**float radiusY** 椭圆y半径\
+**float thickness** 线条宽度\
+
+FillEllipse函数用于绘制一个实心椭圆，头部如下:
+
+```cpp
+void FillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY);
+```
+
+其中参数与DrawEllipse函数相同，去除了线条宽度参数。
+
+
+##### 2.15.1.4 DrawLine 函数
+
+该函数用于绘制一条线段，头部如下:
+
+```cpp
+void DrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, D2D1_CAP_STYLE CapStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE DashStyle = D2D1_DASH_STYLE_SOLID);
+```
+
+**DXY point0** 线段起点\
+**DXY point1** 线段终点\
+**EasyPixel color** 线段颜色\
+**float thickness** 线段粗细\
+**D2D1_CAP_STYLE CapStyle** 线段端点样式，默认为D2D1_CAP_STYLE_ROUND，圆角端点\
+**D2D1_DASH_STYLE DashStyle** 线段样式，默认为D2D1_DASH_STYLE_SOLID，实线
+
+对于后两个参数的详细类型，请参考Microsoft的文档。
+
+
+#### 2.15.2 使用纯色画刷
+
+调用CreateSolid函数创建一个纯色画刷，只需要传入颜色即可。
+
+```cpp
+void CreateSolid(EasyPixel color);
+```
+
+#### 2.15.3 使用线性渐变画刷
+
+使用CreateLinearGradientBrush函数。
+
+```cpp
+void CreateLinearGradientBrush(vector<pair<float, EasyPixel>> &stops, EasyPoint start, EasyPoint end);
+```
+
+**vector<pair<float, EasyPixel>> &stops** 停靠点\
+**EasyPoint start** 渐变起始点\
+**EasyPoint end** 渐变结束点
+
+此处停靠点为一个pair<float,EasyPixel>，表示渐变到float时，颜色为EasyPixel，所以float的范围为0-1，表示从起始点到结束点的百分比。
+
+渐变起始点和渐变结束点都是整个缓冲区的绝对坐标。
+
+#### 2.15.4 使用径向渐变画刷
+
+使用CreateRadialGradientBrush函数。
+
+```cpp
+void CreateRadialGradientBrush(vector<pair<float, EasyPixel>> &stops, EasyPoint center, EasyPoint offset, float radiusX, float radiusY);
+```
+
+**vector<pair<float, EasyPixel>> &stops** 停靠点\
+**EasyPoint center** 渐变中心点\
+**EasyPoint offset** 渐变中心点偏移\
+**float radiusX** 渐变椭圆半径X\
+**float radiusY** 渐变椭圆半径Y
+
+渐变中心点为渐变椭圆对于整个缓冲区的绝对坐标。\
+渐变中心点偏移不会影响渐变椭圆，只会影响颜色中心，颜色会从偏移后的中心点开始向外扩散。
+
+#### 2.15.5 使用位图画刷
+
+使用位图作为画刷。
+
+使用CreateBitmapBrush函数。
+
+```cpp
+void CreateBitmapBrush(EasySurface *surface, int offsetx, int offsety);
+```
+
+传入EasySurface指针，以及位图相对于缓冲区的偏移量即可，它将会使用该位图做底绘制。
+
+#### 2.15.6 释放
+
+释放资源，调用Release函数。
+
+```cpp
+void Release();
+```
+
+#### 2.15.7 easyGeometryPainter 对象
+
+该类可以用于快速绘制纯色几何图形。
+
+easyGeometryPainter为指向这个对象的指针。
+
+有以下函数：
+
+```cpp
+void DrawRectangle(float x, float y, float width, float height, EasyPixel color, float thickness);
+void DrawLine(EasyPoint point0, EasyPoint point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
+void DrawRoundedRectangle(float x, float y, float width, float height, EasyPixel color, float thickness, float radiusX, float radiusY);
+void DrawEllipse(float x, float y, EasyPixel color, float radiusX, float radiusY, float thickness);
+
+void FillRectangle(float x, float y, float width, float height, EasyPixel color);
+void FillRoundedRectangle(float x, float y, float width, float height, EasyPixel color, float radiusX, float radiusY);
+void FillEllipse(float x, float y, EasyPixel color, float radiusX, float radiusY);
+
+void DrawRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color, float thickness);
+void DrawLineEx(D2D1_MATRIX_3X2_F transform, EasyPoint point0, EasyPoint point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle = D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE dashStyle = D2D1_DASH_STYLE_SOLID);
+void DrawRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color, float thickness, float radiusX, float radiusY);
+void DrawEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, EasyPixel color, float radiusX, float radiusY, float thickness);
+
+void FillRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color);
+void FillRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color, float radiusX, float radiusY);
+void FillEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, EasyPixel color, float radiusX, float radiusY);
+```
+
+与EasyBrush的函数功能相同，但是多加了一个EasyPixel参数，用于设置颜色。
 
 ## 3.历史
 
@@ -894,6 +1117,7 @@ void SetInterpolationMode(int mode);
 
 9.1 - 2025.6.20\
 修复了已知bug。
+
 
 
 By MrJayden.

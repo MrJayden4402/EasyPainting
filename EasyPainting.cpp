@@ -1,4 +1,8 @@
 // EasyPainting.cpp 10.0 Celebrate the third anniversary
+
+#ifndef __EASYPAINTING_CPP__
+#define __EASYPAINTING_CPP__ 1
+
 #include "EasyPainting.h"
 
 namespace EasyPainting
@@ -16,21 +20,23 @@ namespace EasyPainting
 
     iconv_t iconv_cd;
 
-    HWND WINDOW;
+    HWND easyPaintingWindow = nullptr;
 
-    double ConversionWidth = 1;
-    double ConversionHeight = 1;
-    int WINDOW_WIDTH;
-    int WINDOW_HEIGHT;
-    vector<pair<SURFACE *, string>> LoadSURFACE;
+    double conversionWidth = 1;
+    double conversionHeight = 1;
+    int easyWindowWidth;
+    int easyWindowHeight;
+    vector<pair<EasySurface *, string>> registerLoadSURFACE;
 
-    vector<pair<EasyFont *, __Easy_Font_Info>> LoadFont;
-    vector<EasyBuffer *> LoadBuffer;
+    vector<pair<EasyFont *, __Easy_Font_Info>> registerLoadFont;
+    vector<EasyBuffer *> registerLoadBuffer;
+
+    vector<ID2D1DeviceContext **> registerLoadRenderTargetPtr;
 
     int hWindowWidth, hWindowHeight;
     COLORREF hBackColor;
 
-    bool EasyPaintingStartFlag = false;
+    bool easyPaintingStartFlag = false;
 
     bool enableVSync = true;
 
@@ -38,7 +44,8 @@ namespace EasyPainting
     int fpsCounter = 0;
     int showFPS = 0;
 
-    D2D1_BITMAP_INTERPOLATION_MODE easyInterpolationMode = D2D1_BITMAP_INTERPOLATION_MODE_LINEAR;
+    D2D1_INTERPOLATION_MODE easyInterpolationMode = D2D1_INTERPOLATION_MODE_LINEAR;
+
 };
 
 // const number
@@ -47,18 +54,23 @@ const int EASY_TURNUD = 2;
 
 const int EASY_LINEAR_MODE = 1;
 const int EASY_NEAREST_MODE = 2;
+const int EASY_CUBIC_MODE = 3;
+const int EASY_HIGH_QUALITY_CUBIC_MODE = 4;
+const int EASY_ANISOTROPIC_MODE = 5;
 
 EasyPaintingScreenBuffer *easyScreenBuffer = nullptr;
 
 EasyPaintingDevice *easyPaintingDevice = nullptr;
 
+EasyGeometryPainter *easyGeometryPainter = nullptr;
+
 void __Easy_SetWindow(HWND window, int WindowWidth, int WindowHeight)
 {
     using namespace EasyPainting;
 
-    WINDOW_WIDTH = WindowWidth;
-    WINDOW_HEIGHT = WindowHeight;
-    WINDOW = window;
+    easyWindowWidth = WindowWidth;
+    easyWindowHeight = WindowHeight;
+    easyPaintingWindow = window;
     hWindowWidth = WindowWidth;
     hWindowHeight = WindowHeight;
 
@@ -90,7 +102,9 @@ void __Easy_SetWindow(HWND window, int WindowWidth, int WindowHeight)
     swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     swapDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 
-    dxgiFactory->CreateSwapChainForHwnd(
+    pSwapChain = nullptr;
+
+    HRESULT hr = dxgiFactory->CreateSwapChainForHwnd(
         pD3dDevice,
         window,
         &swapDesc,
@@ -121,13 +135,13 @@ void __Easy_SetWindow(HWND window, int WindowWidth, int WindowHeight)
     first = false;
 }
 
-void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor)
+void EasyPaintingStart(HWND window, int windowWidth, int windowHeight, EasyPixel backColor)
 {
     using namespace EasyPainting;
 
-    if (EasyPaintingStartFlag)
+    if (easyPaintingStartFlag)
         return;
-    EasyPaintingStartFlag = true;
+    easyPaintingStartFlag = true;
 
     CoInitializeEx(nullptr, COINIT_MULTITHREADED); // 初始化 COM，指定为多线程
     CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pWICFactory));
@@ -139,26 +153,26 @@ void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel
     if (window == NULL)
         return;
 
-    WINDOW = window;
+    easyPaintingWindow = window;
     RECT rctA;                           // 定义一个RECT结构体，存储窗口的宽高
     GetClientRect(window, &rctA);        // 通过窗口句柄获得窗口的大小存储在rctA结构中
     int width = rctA.right - rctA.left;  // 窗口的宽度
     int height = rctA.bottom - rctA.top; // 窗口的高度
-    WINDOW_WIDTH = width;
-    WINDOW_HEIGHT = height;
-    hWindowWidth = WindowWidth;
-    hWindowHeight = WindowHeight;
-    hBackColor = BackColor;
+    easyWindowWidth = width;
+    easyWindowHeight = height;
+    hWindowWidth = windowWidth;
+    hWindowHeight = windowHeight;
+    hBackColor = backColor;
     if (hWindowWidth && hWindowHeight)
     {
-        ConversionWidth = 1.0 * width / hWindowWidth;
-        ConversionHeight = 1.0 * height / hWindowHeight;
+        conversionWidth = 1.0 * width / hWindowWidth;
+        conversionHeight = 1.0 * height / hWindowHeight;
     }
 
     D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, &pFactory);
     DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown **)&pWriteFactory);
 
-    // 1. 创建 D3D11 设备
+    // 创建 D3D11 设备
     D3D_FEATURE_LEVEL featureLevel;
     D3D11CreateDevice(
         nullptr,
@@ -180,19 +194,21 @@ void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel
     // 创建 D2D DeviceContext
     pD2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &pRenderTarget);
 
-    __Easy_SetWindow(window, WindowWidth, WindowHeight);
+    __Easy_SetWindow(window, windowWidth, windowHeight);
 
-    for (int i = 0; i < LoadBuffer.size(); i++)
-        LoadBuffer[i]->StartUp(LoadBuffer[i]->width, LoadBuffer[i]->height);
-    for (int i = 0; i < LoadSURFACE.size(); i++)
-        LoadSURFACE[i].first->LoadIt(LoadSURFACE[i].second);
-    for (int i = 0; i < LoadFont.size(); i++)
-        LoadFont[i].first->LoadIt(LoadFont[i].second);
+    for (int i = 0; i < registerLoadBuffer.size(); i++)
+        registerLoadBuffer[i]->StartUp(registerLoadBuffer[i]->width, registerLoadBuffer[i]->height);
+    for (int i = 0; i < registerLoadSURFACE.size(); i++)
+        registerLoadSURFACE[i].first->LoadIt(registerLoadSURFACE[i].second);
+    for (int i = 0; i < registerLoadFont.size(); i++)
+        registerLoadFont[i].first->LoadIt(registerLoadFont[i].second);
 
     easyScreenBuffer = new EasyPaintingScreenBuffer();
     easyScreenBuffer->pBufferDevice = EasyPainting::pRenderTarget;
 
     easyPaintingDevice = new EasyPaintingDevice();
+
+    easyGeometryPainter = new EasyGeometryPainter();
 
     auto fpsCounterFunc = []()
     {
@@ -209,6 +225,32 @@ void EasyPaintingStart(HWND window, int WindowWidth, int WindowHeight, EasyPixel
     thread fpsThread(fpsCounterFunc);
     fpsThread.detach();
 }
+
+namespace EasyPainting
+{
+    class __Easy_ThreadRenderTargetHolder
+    {
+    public:
+        ID2D1DeviceContext **threadRenderTarget;
+        __Easy_ThreadRenderTargetHolder()
+        {
+            threadRenderTarget = &pRenderTarget;
+        }
+        ID2D1DeviceContext *operator->()
+        {
+            return *threadRenderTarget;
+        }
+        operator ID2D1DeviceContext *()
+        {
+            return *threadRenderTarget;
+        }
+        void operator=(ID2D1DeviceContext *&pDeviceContext)
+        {
+            threadRenderTarget = &pDeviceContext;
+        }
+    };
+    thread_local __Easy_ThreadRenderTargetHolder threadRenderTarget;
+};
 
 // WinGDI Functions
 HBITMAP GetScalingBitmap_Delete(HBITMAP p_bitmap, int width, int height, int OldWidth, int OldHeight)
@@ -552,10 +594,10 @@ bool SpritePeekLine(SPRITE first, SPRITE second)
     int rsecond = max(second.width, second.height) * second.scaling / 2;
     return (line < rfirst + rsecond);
 }
-DXY MouseWinRawXY(void)
+DXY __Easy_MouseWinRawXY(void)
 {
     using namespace EasyPainting;
-    HWND hWnd = WINDOW;
+    HWND hWnd = easyPaintingWindow;
     for (POINT pt = {};; Sleep(1))
     {
         POINT pt_new;
@@ -570,31 +612,30 @@ DXY MouseWinRawXY(void)
         }
     }
 }
-DXY MouseWinDetailedXY(void)
+DXY EasyMousePos(void)
 {
     using namespace EasyPainting;
-    DXY tmp = MouseWinRawXY();
-    return DXY(tmp.x / ConversionWidth, tmp.y / ConversionHeight);
+    DXY tmp = __Easy_MouseWinRawXY();
+    return DXY(tmp.x / conversionWidth, tmp.y / conversionHeight);
 }
-#define MouseWinXY MouseWinDetailedXY
 bool KeyIt(SPRITE in)
 {
     using namespace EasyPainting;
-    DXY mxy = MouseWinRawXY();
+    DXY mxy = __Easy_MouseWinRawXY();
     int x = in.x;
     int y = in.y;
     int width = in.width * in.scaling;
     int height = in.height * in.scaling;
-    x *= ConversionWidth;
-    y *= ConversionHeight;
-    width *= ConversionWidth;
-    height *= ConversionHeight;
+    x *= conversionWidth;
+    y *= conversionHeight;
+    width *= conversionWidth;
+    height *= conversionHeight;
     SPRITE it(x, y, width, height);
     SPRITE mouse(mxy.x, mxy.y, 1, 1);
     return SpritePeek(mouse, it) && ((GetAsyncKeyState(MOUSE_MOVED) & 0x8000) ? 1 : 0);
 }
 
-ID2D1Bitmap *CreateBitmapFromArray(ID2D1RenderTarget *pRenderTarget, const BYTE *pixelData, UINT width, UINT height)
+ID2D1Bitmap *EasyD2DCreateBitmapFromArray(ID2D1RenderTarget *pRenderTarget, const BYTE *pixelData, UINT width, UINT height)
 {
     // 设置位图属性 (BGRA 格式)
     D2D1_BITMAP_PROPERTIES props = D2D1::BitmapProperties(
@@ -615,7 +656,7 @@ ID2D1Bitmap *CreateBitmapFromArray(ID2D1RenderTarget *pRenderTarget, const BYTE 
     return SUCCEEDED(hr) ? pBitmap : nullptr;
 }
 
-ID2D1Bitmap1 *CreateBitmap1FromArray(ID2D1DeviceContext *pDeviceContext, const BYTE *pixelData, UINT width, UINT height)
+ID2D1Bitmap1 *EasyD2DCreateBitmap1FromArray(ID2D1DeviceContext *pDeviceContext, const BYTE *pixelData, UINT width, UINT height)
 {
     // 设置位图属性（BGRA + Premultiplied Alpha）
     D2D1_BITMAP_PROPERTIES1 props = {};
@@ -636,7 +677,7 @@ ID2D1Bitmap1 *CreateBitmap1FromArray(ID2D1DeviceContext *pDeviceContext, const B
     return SUCCEEDED(hr) ? pBitmap1 : nullptr;
 }
 
-ID2D1Bitmap *CreatePureColorBitmap(ID2D1RenderTarget *pRenderTarget, EasyPixel color, int width, int height)
+ID2D1Bitmap *EasyD2DCreatePureColorBitmap(ID2D1RenderTarget *pRenderTarget, EasyPixel color, int width, int height)
 {
     BYTE *pixel = new BYTE[(width * height) << 2];
     for (UINT y = 0; y < height; y++)
@@ -670,7 +711,7 @@ ID2D1Bitmap *CreatePureColorBitmap(ID2D1RenderTarget *pRenderTarget, EasyPixel c
     return SUCCEEDED(hr) ? pBitmap : nullptr;
 }
 
-ID2D1Bitmap1 *CreatePureColorBitmap1(ID2D1DeviceContext *pDeviceContext, EasyPixel color, int width, int height)
+ID2D1Bitmap1 *EasyD2DCreatePureColorBitmap1(ID2D1DeviceContext *pDeviceContext, EasyPixel color, int width, int height)
 {
     // 分配 BGRA 像素数据
     BYTE *pixel = new BYTE[(width * height) << 2];
@@ -704,7 +745,7 @@ ID2D1Bitmap1 *CreatePureColorBitmap1(ID2D1DeviceContext *pDeviceContext, EasyPix
     return SUCCEEDED(hr) ? pBitmap1 : nullptr;
 }
 
-ID2D1Bitmap *CreateNullBitmap(ID2D1RenderTarget *pRenderTarget, UINT width, UINT height)
+ID2D1Bitmap *EasyD2DCreateNullBitmap(ID2D1RenderTarget *pRenderTarget, UINT width, UINT height)
 {
     // 设置位图属性 (BGRA 格式)
     D2D1_BITMAP_PROPERTIES props = D2D1::BitmapProperties(
@@ -725,12 +766,12 @@ ID2D1Bitmap *CreateNullBitmap(ID2D1RenderTarget *pRenderTarget, UINT width, UINT
     return SUCCEEDED(hr) ? pBitmap : nullptr;
 }
 
-ID2D1Bitmap1 *CreateNullBitmap1(ID2D1DeviceContext *pDeviceContext, UINT width, UINT height)
+ID2D1Bitmap1 *EasyD2DCreateNullBitmap1(ID2D1DeviceContext *pDeviceContext, UINT width, UINT height)
 {
     // 设置位图属性（BGRA + Premultiplied Alpha）
     D2D1_BITMAP_PROPERTIES1 props = {};
     props.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
-    props.bitmapOptions = D2D1_BITMAP_OPTIONS_NONE; // 或 D2D1_BITMAP_OPTIONS_TARGET / CANNOT_DRAW 视用途而定
+    props.bitmapOptions = D2D1_BITMAP_OPTIONS_NONE;
     props.dpiX = 96.0f;
     props.dpiY = 96.0f;
 
@@ -746,7 +787,72 @@ ID2D1Bitmap1 *CreateNullBitmap1(ID2D1DeviceContext *pDeviceContext, UINT width, 
     return SUCCEEDED(hr) ? pBitmap1 : nullptr;
 }
 
-void RenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float x, float y)
+bool EasyD2DGetPixelFromBitmap(ID2D1Bitmap *pBitmap, vector<vector<EasyPixel>> &pixels, ID2D1DeviceContext *pDeviceContext)
+{
+    D2D1_SIZE_U size = pBitmap->GetPixelSize();
+
+    UINT width = size.width;
+    UINT height = size.height;
+    HRESULT hr;
+
+    D2D1_BITMAP_PROPERTIES1 props = {};
+    props.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
+    props.bitmapOptions = D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW;
+    props.dpiX = 96.0f;
+    props.dpiY = 96.0f;
+
+    UINT stride = width * 4;
+    ID2D1Bitmap1 *cpuBitmap;
+    hr = pDeviceContext->CreateBitmap(
+        D2D1::SizeU(width, height),
+        nullptr,
+        stride,
+        &props,
+        &cpuBitmap);
+
+    if (FAILED(hr))
+        return false;
+
+    D2D_POINT_2U pt = {0, 0};
+    D2D1_RECT_U rect = {0, 0, width, height};
+    hr = cpuBitmap->CopyFromBitmap(&pt, pBitmap, &rect);
+
+    if (FAILED(hr))
+        return false;
+
+    D2D1_MAPPED_RECT mappedRect;
+    hr = cpuBitmap->Map(D2D1_MAP_OPTIONS_READ, &mappedRect);
+
+    if (FAILED(hr))
+        return false;
+
+    pixels.clear();
+    pixels.resize(width, vector<EasyPixel>(height));
+
+    for (UINT y = 0; y < height; ++y)
+    {
+        BYTE *row = mappedRect.bits + y * mappedRect.pitch;
+        for (UINT x = 0; x < width; ++x)
+        {
+            BYTE *pixel = row + x * 4;
+            BYTE B = pixel[0];
+            BYTE G = pixel[1];
+            BYTE R = pixel[2];
+            BYTE A = pixel[3];
+            pixels[x][y] = EasyColor(A, R, G, B);
+        }
+    }
+
+    cpuBitmap->Unmap();
+    return true;
+}
+
+bool EasyD2DGetPixelFromBitmap1(ID2D1Bitmap1 *pBitmap, vector<vector<EasyPixel>> &pixels, ID2D1DeviceContext *pDeviceContext)
+{
+    return EasyD2DGetPixelFromBitmap(pBitmap, pixels, pDeviceContext);
+}
+
+void EasyD2DRenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float x, float y)
 {
     if (!pBitmap)
         return;
@@ -766,13 +872,10 @@ void RenderBitmap(ID2D1RenderTarget *pRenderTarget, ID2D1Bitmap *pBitmap, float 
     // 绘制位图
     pRenderTarget->DrawBitmap(
         pBitmap,
-        destRect,
-        1.0f,                               // 不透明度
-        EasyPainting::easyInterpolationMode // 插值模式
-    );
+        destRect);
 }
 
-void RenderBitmap1(ID2D1DeviceContext *pDeviceContext, ID2D1Bitmap1 *pBitmap, float x, float y)
+void EasyD2DRenderBitmap1(ID2D1DeviceContext *pDeviceContext, ID2D1Bitmap1 *pBitmap, float x, float y)
 {
     if (!pBitmap)
         return;
@@ -780,22 +883,13 @@ void RenderBitmap1(ID2D1DeviceContext *pDeviceContext, ID2D1Bitmap1 *pBitmap, fl
     // 获取位图原始尺寸
     D2D1_SIZE_F size = pBitmap->GetSize();
 
-    // 设置目标矩形
-    D2D1_RECT_F destRect = D2D1::RectF(
-        x,
-        y,
-        x + size.width,
-        y + size.height);
-
     pDeviceContext->SetTransform(D2D1::Matrix3x2F::Identity());
 
-    // 绘制位图
-    pDeviceContext->DrawBitmap(
-        pBitmap,
-        destRect,
-        1.0f,                               // 不透明度
-        EasyPainting::easyInterpolationMode // 插值模式
-    );
+    D2D1_POINT_2F point = D2D1::Point2F(x, y);
+
+    D2D1_RECT_F srcRect = D2D1::RectF(0, 0, size.width, size.height);
+
+    pDeviceContext->DrawImage(pBitmap, &point, &srcRect, EasyPainting::easyInterpolationMode);
 }
 
 wstring __Easy_gbk_to_wstring(const string &input)
@@ -903,37 +997,35 @@ void __Easy_LoadBitmapFromFile(string file_path, int width, int height, COLORREF
     delete[] pixels;
 }
 
-ID2D1Bitmap *LoadBitmapFromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1RenderTarget *pRenderTarget)
+ID2D1Bitmap *EasyD2DLoadBitmapFromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1RenderTarget *pRenderTarget)
 {
     ID2D1Bitmap *pBitmap = nullptr;
     __Easy_LoadBitmapFromFile(file_path, width, height, transparent_color, pRenderTarget, &pBitmap);
     return pBitmap;
 }
 
-ID2D1Bitmap1 *LoadBitmap1FromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1DeviceContext *DeviceContext)
+ID2D1Bitmap1 *EasyD2DLoadBitmap1FromFile(string file_path, int width, int height, EasyPixel transparent_color, ID2D1DeviceContext *pDeviceContext)
 {
     ID2D1Bitmap1 *pBitmap = nullptr;
-    __Easy_LoadBitmapFromFile(file_path, width, height, transparent_color, DeviceContext, &pBitmap);
+    __Easy_LoadBitmapFromFile(file_path, width, height, transparent_color, pDeviceContext, &pBitmap);
     return pBitmap;
 }
 
-void EasyDrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget)
+void __Easy_EasyDrawRectangle(float x, float y, int width, int height, float thickness, ID2D1Brush *brush)
 {
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->DrawRectangle(D2D1::RectF(x, y, x + width, y + height), brush, thickness);
-    brush->Release();
+    using namespace EasyPainting;
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->DrawRectangle(D2D1::RectF(x, y, x + width, y + height), brush, thickness);
 }
 
-void EasyDrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY, ID2D1DeviceContext *pRenderTarget)
+void __Easy_EasyDrawRoundedRectangle(float x, float y, int width, int height, float thickness, float radiusX, float radiusY, ID2D1Brush *brush)
 {
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + width, y + height), radiusX, radiusY), brush, thickness);
-    brush->Release();
+    using namespace EasyPainting;
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + width, y + height), radiusX, radiusY), brush, thickness);
 }
 
-void EasyDrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle)
+void __Easy_EasyDrawLine(EasyPoint point0, EasyPoint point1, float thickness, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle, ID2D1Brush *brush)
 {
     using namespace EasyPainting;
 
@@ -945,49 +1037,43 @@ void EasyDrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, ID2D
     ID2D1StrokeStyle *strokeStyle = nullptr;
     pFactory->CreateStrokeStyle(&props, nullptr, 0, &strokeStyle);
 
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
     D2D1_POINT_2F p0 = D2D1::Point2F(point0.x, point0.y);
     D2D1_POINT_2F p1 = D2D1::Point2F(point1.x, point1.y);
 
-    pRenderTarget->DrawLine(p0, p1, brush, thickness, strokeStyle);
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->DrawLine(p0, p1, brush, thickness, strokeStyle);
 
     strokeStyle->Release();
-    brush->Release();
 }
 
-void EasyDrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness, ID2D1DeviceContext *pRenderTarget)
+void __Easy_EasyDrawEllipse(float x, float y, float radiusX, float radiusY, float thickness, ID2D1Brush *brush)
 {
+    using namespace EasyPainting;
     D2D1_ELLIPSE ellipse = D2D1::Ellipse(D2D1::Point2F(x, y), radiusX, radiusY);
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->DrawEllipse(ellipse, brush, thickness);
-    brush->Release();
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->DrawEllipse(ellipse, brush, thickness);
 }
 
-void EasyFillRectangle(int x, int y, int width, int height, EasyPixel color, ID2D1DeviceContext *pRenderTarget)
+void __Easy_EasyFillRectangle(float x, float y, int width, int height, ID2D1Brush *brush)
 {
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->FillRectangle(D2D1::RectF(x, y, x + width, y + height), brush);
-    brush->Release();
+    using namespace EasyPainting;
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->FillRectangle(D2D1::RectF(x, y, x + width, y + height), brush);
 }
 
-void EasyFillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY, ID2D1DeviceContext *pRenderTarget)
+void __Easy_EasyFillRoundedRectangle(float x, float y, int width, int height, float radiusX, float radiusY, ID2D1Brush *brush)
 {
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + width, y + height), radiusX, radiusY), brush);
-    brush->Release();
+    using namespace EasyPainting;
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + width, y + height), radiusX, radiusY), brush);
 }
 
-void EasyFillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, ID2D1DeviceContext *pRenderTarget)
+void __Easy_EasyFillEllipse(float x, float y, float radiusX, float radiusY, ID2D1Brush *brush)
 {
+    using namespace EasyPainting;
     D2D1_ELLIPSE ellipse = D2D1::Ellipse(D2D1::Point2F(x, y), radiusX, radiusY);
-    ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->FillEllipse(ellipse, brush);
-    brush->Release();
+    // threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    threadRenderTarget->FillEllipse(ellipse, brush);
 }
 
 void __Easy_SaveIWICBitmapToFile(IWICBitmap *pBitmap, const LPCSTR filePath)
@@ -1129,20 +1215,15 @@ void EasyCreateConsoleWindow()
     freopen("CONOUT$", "w", stdout);
 }
 
-ID2D1DeviceContext *EasyGetScreenBuffer()
-{
-    return EasyPainting::pRenderTarget;
-}
-
 void DrawStart(void)
 {
     using namespace EasyPainting;
-    RECT rctA;                           // 定义一个RECT结构体，存储窗口的宽高
-    GetClientRect(WINDOW, &rctA);        // 通过窗口句柄获得窗口的大小存储在rctA结构中
-    int width = rctA.right - rctA.left;  // 窗口的宽度
-    int height = rctA.bottom - rctA.top; // 窗口的高度
-    ConversionWidth = 1.0 * width / hWindowWidth;
-    ConversionHeight = 1.0 * height / hWindowHeight;
+    RECT rctA;                                // 定义一个RECT结构体，存储窗口的宽高
+    GetClientRect(easyPaintingWindow, &rctA); // 通过窗口句柄获得窗口的大小存储在rctA结构中
+    int width = rctA.right - rctA.left;       // 窗口的宽度
+    int height = rctA.bottom - rctA.top;      // 窗口的高度
+    conversionWidth = 1.0 * width / hWindowWidth;
+    conversionHeight = 1.0 * height / hWindowHeight;
     pRenderTarget->BeginDraw();
     pRenderTarget->Clear(D2D1::ColorF(GetRValue(hBackColor) / 255.0, GetGValue(hBackColor) / 255.0, GetBValue(hBackColor) / 255.0));
 }
@@ -1157,48 +1238,41 @@ void DrawEnd()
     fpsCounter++;
 }
 
-SURFACE::SURFACE(string filename, int width, int height, EasyPixel MatteColor, ID2D1DeviceContext **pRenderTarget)
+EasySurface::EasySurface(string filename, int width, int height, EasyPixel transColor)
 {
-    this->Create(filename, width, height, MatteColor, pRenderTarget);
+    this->Create(filename, width, height, transColor);
 }
 
-void SURFACE::LoadIt(string filename)
+void EasySurface::LoadIt(string filename)
 {
     this->image = nullptr;
-    this->image = LoadBitmap1FromFile(filename.c_str(), this->Width, this->Height, this->MatteColor);
-    if (this->Width == 0 || this->Height == 0)
+    this->image = EasyD2DLoadBitmap1FromFile(filename.c_str(), this->imageWidth, this->imageHeight, this->transColor);
+    if (this->imageWidth == 0 || this->imageHeight == 0)
     {
         D2D1_SIZE_F size = this->image->GetSize();
         this->image->GetSize(&size);
-        this->Width = size.width;
-        this->Height = size.height;
+        this->imageWidth = size.width;
+        this->imageHeight = size.height;
     }
 }
 
-SURFACE::SURFACE()
+EasySurface::EasySurface()
 {
     this->image = nullptr;
-    this->pRenderTarget = &EasyPainting::pRenderTarget;
 }
 
-void SURFACE::Create(string filename, int width, int height, EasyPixel MatteColor, ID2D1DeviceContext **pRenderTarget)
+void EasySurface::Create(string filename, int width, int height, EasyPixel transColor)
 {
-    this->Width = width;
-    this->Height = height;
-    this->MatteColor = MatteColor;
-    this->pRenderTarget = pRenderTarget;
-    if (!EasyPainting::EasyPaintingStartFlag)
-        EasyPainting::LoadSURFACE.push_back({this, filename});
+    this->imageWidth = width;
+    this->imageHeight = height;
+    this->transColor = transColor;
+    if (!EasyPainting::easyPaintingStartFlag)
+        EasyPainting::registerLoadSURFACE.push_back({this, filename});
     else
         this->LoadIt(filename);
 }
 
-void SURFACE::SetRenderTarget(ID2D1DeviceContext **pRenderTarget)
-{
-    this->pRenderTarget = pRenderTarget;
-}
-
-void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor)
+void EasySurface::CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel transColor)
 {
     using namespace EasyPainting;
 
@@ -1210,7 +1284,7 @@ void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskCol
 
     BYTE *pixels = new BYTE[(ori_width * ori_height) << 2];
 
-    this->MatteColor = maskColor;
+    this->transColor = transColor;
 
     for (UINT y = 0; y < ori_height; y++)
         for (UINT x = 0; x < ori_width; x++)
@@ -1218,7 +1292,7 @@ void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskCol
             UINT index = (y * ori_width + x) << 2;
             EasyPixel p = vec[x][y];
 
-            if (p.r == this->MatteColor.r && p.g == this->MatteColor.g && p.b == this->MatteColor.b)
+            if (p.r == this->transColor.r && p.g == this->transColor.g && p.b == this->transColor.b)
                 p = EasyPixel(0, 0, 0, 0);
 
             pixels[index + 3] = p.a;
@@ -1227,15 +1301,15 @@ void SURFACE::CreateFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskCol
             pixels[index + 0] = p.b;
         }
 
-    this->image = CreateBitmap1FromArray(*(this->pRenderTarget), pixels, ori_width, ori_height);
+    this->image = EasyD2DCreateBitmap1FromArray(threadRenderTarget, pixels, ori_width, ori_height);
 
-    this->Width = ori_width;
-    this->Height = ori_height;
+    this->imageWidth = ori_width;
+    this->imageHeight = ori_height;
 
     delete[] pixels;
 }
 
-void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor)
+void EasySurface::CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel transColor)
 {
     using namespace EasyPainting;
 
@@ -1247,7 +1321,7 @@ void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor
 
     BYTE *pixels = new BYTE[(ori_width * ori_height) << 2];
 
-    this->MatteColor = maskColor;
+    this->transColor = transColor;
 
     for (UINT y = 0; y < ori_height; y++)
         for (UINT x = 0; x < ori_width; x++)
@@ -1255,7 +1329,7 @@ void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor
             UINT index = (y * ori_width + x) << 2;
             EasyPixel p = vec[x][y];
 
-            if (p.r == this->MatteColor.r && p.g == this->MatteColor.g && p.b == this->MatteColor.b)
+            if (p.r == this->transColor.r && p.g == this->transColor.g && p.b == this->transColor.b)
                 p = EasyPixel(0, 0, 0, 0);
 
             pixels[index + 3] = p.a;
@@ -1269,121 +1343,243 @@ void SURFACE::CopyFromMemory(vector<vector<EasyPixel>> &vec, EasyPixel maskColor
     delete[] pixels;
 }
 
-SURFACE::~SURFACE(void)
+bool EasySurface::GetPixelData(vector<vector<EasyPixel>> &vec)
+{
+    return EasyD2DGetPixelFromBitmap1(this->image, vec, EasyPainting::threadRenderTarget);
+}
+
+EasySurface::~EasySurface(void)
 {
     this->Release();
 }
 
-void SURFACE::DrawItEx(int x, int y, int width, int height, int imagex, int imagey, int imagewidth, int imageheight, float rotation, int midpointdx, int midpointdy, int reverse)
+void EasySurface::DrawItEx(float x, float y, float width, float height, int imagex, int imagey, int imagewidth, int imageheight, float rotation, int midpointdx, int midpointdy, int reverse)
 {
     if (this->image == nullptr)
         return;
+
+    width = width == 0 ? this->imageWidth : width;
+    height = height == 0 ? this->imageHeight : height;
+    imagewidth = imagewidth == 0 ? this->imageWidth : imagewidth;
+    imageheight = imageheight == 0 ? this->imageHeight : imageheight;
+
     D2D1_RECT_F bitmap_rect = D2D1::RectF(imagex, imagey, imagex + imagewidth, imagey + imageheight);
-    D2D1_RECT_F rect = D2D1::RectF(x, y, x + width, y + height);
+
     D2D1_POINT_2F center = {x + (width / 2.0f) + midpointdx, y + (height / 2.0f) + midpointdy};
-    FLOAT angle = rotation; // 旋转角度，单位为度
-    // 将角度转换为弧度
-    D2D1_MATRIX_3X2_F Matrix = D2D1::Matrix3x2F::Rotation(angle, center);
+
+    D2D1_MATRIX_3X2_F matrix = D2D1::Matrix3x2F::Rotation(rotation, center);
+
     // 翻转
     center = {x + (width / 2.0f), y + (height / 2.0f)};
     if (reverse & EASY_TURNLR)
-        Matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(-1.0f, 1.0f), center) * Matrix;
+        matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(-1.0f, 1.0f), center) * matrix;
     if (reverse & EASY_TURNUD)
-        Matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(1.0f, -1.0f), center) * Matrix;
-    (*pRenderTarget)->SetTransform(Matrix);
-    (*pRenderTarget)->DrawBitmap(this->image, &rect, 1.0f, EasyPainting::easyInterpolationMode, &bitmap_rect);
+        matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(1.0f, -1.0f), center) * matrix;
+
+    D2D1_POINT_2F renderTargetPoint = {x, y};
+
+    matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(width / imagewidth, height / imageheight), renderTargetPoint) * matrix;
+
+    EasyPainting::threadRenderTarget->SetTransform(matrix);
+    EasyPainting::threadRenderTarget->DrawImage(this->image, &renderTargetPoint, &bitmap_rect, EasyPainting::easyInterpolationMode);
 }
 
-void SURFACE::DrawIt(int x, int y, int width, int height, float scaling, float rotation, int columns, int frames, int reverse)
+void EasySurface::DrawItPoint(EasyPoint p0, EasyPoint p1, EasyPoint p2, int imagex, int imagey, int imagewidth, int imageheight)
+{
+    imagewidth = imagewidth == 0 ? this->imageWidth : imagewidth;
+    imageheight = imageheight == 0 ? this->imageHeight : imageheight;
+
+    double &X0 = p0.x, &Y0 = p0.y, &X1 = p1.x, &Y1 = p1.y, &X2 = p2.x, &Y2 = p2.y;
+    int &w = imagewidth, &h = imageheight;
+    // 构造仿射变换矩阵
+    D2D1_MATRIX_3X2_F matrix = {
+        (X1 - X0) / w,
+        (Y1 - Y0) / w,
+        (X2 - X0) / h,
+        (Y2 - Y0) / h,
+        X0,
+        Y0};
+    EasyPainting::threadRenderTarget->SetTransform(matrix);
+    D2D1_POINT_2F renderTargetPoint = {0, 0};
+    D2D1_RECT_F bitmapRect = D2D1::RectF(imagex, imagey, imagex + w, imagey + h);
+    EasyPainting::threadRenderTarget->DrawImage(this->image, &renderTargetPoint, &bitmapRect);
+}
+
+void EasySurface::DrawIt(float x, float y, float width, float height, float scaling, float rotation, int columns, int frames, int reverse)
 {
     if (this->image == nullptr)
         return;
-    if (width == 0 || height == 0)
-        width = this->Width, height = this->Height;
+
+    width = width == 0 ? this->imageWidth : width;
+    height = height == 0 ? this->imageHeight : height;
+
     const int framex = (frames % columns) * width;
     const int framey = (frames / columns) * height;
-    D2D1_RECT_F bitmap_rect = D2D1::RectF(framex, framey, framex + width, framey + height);
+    D2D1_RECT_F bitmapRect = D2D1::RectF(framex, framey, framex + width, framey + height);
     width *= scaling;
     height *= scaling;
-    D2D1_RECT_F rect = D2D1::RectF(x, y, x + width, y + height);
     D2D1_POINT_2F center = {x + (width / 2.0f), y + (height / 2.0f)};
-    FLOAT angle = rotation; // 旋转角度，单位为度
-    // 将角度转换为弧度
-    FLOAT radians = angle * PI_over_180;
-    D2D1_MATRIX_3X2_F Matrix = D2D1::Matrix3x2F::Rotation(angle, center);
-    // 翻转
+    D2D1_MATRIX_3X2_F Matrix = D2D1::Matrix3x2F::Rotation(rotation, center);
+    // reverse
     if (reverse & EASY_TURNLR)
         Matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(-1.0f, 1.0f), center) * Matrix;
     if (reverse & EASY_TURNUD)
         Matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(1.0f, -1.0f), center) * Matrix;
-    (*pRenderTarget)->SetTransform(Matrix);
-    (*pRenderTarget)->DrawBitmap(this->image, &rect, 1.0f, EasyPainting::easyInterpolationMode, &bitmap_rect);
+
+    D2D1_POINT_2F renderTargetPoint = {x, y};
+    // scale
+    Matrix = D2D1::Matrix3x2F::Scale(scaling, scaling, renderTargetPoint) * Matrix;
+
+    EasyPainting::threadRenderTarget->SetTransform(Matrix);
+    EasyPainting::threadRenderTarget->DrawImage(this->image, &renderTargetPoint, &bitmapRect);
 }
 
-void SURFACE::DrawItDirect(int x, int y, int width, int height)
+void EasySurface::DrawItDirect(float x, float y, float width, float height)
 {
     this->DrawIt(x, y, width, height);
 }
-void SURFACE::DrawItFrames(int x, int y, int width, int height, int columns, int frames, float scaling)
+void EasySurface::DrawItFrames(float x, float y, float width, float height, int columns, int frames, float scaling)
 {
     this->DrawIt(x, y, width, height, scaling, 0, columns, frames);
 }
-void SURFACE::DrawItReverse(int x, int y, int width, int height, int reverse, float scaling, int rotation)
+void EasySurface::DrawItReverse(float x, float y, float width, float height, int reverse, float scaling, int rotation)
 {
     this->DrawIt(x, y, width, height, scaling, rotation, 1, 0, reverse);
 }
 
-void SURFACE::Release()
+void EasySurface::Release()
 {
-    this->Width = this->Height = 0;
-    this->MatteColor = 0;
-    this->pRenderTarget = NULL;
+    this->imageWidth = this->imageHeight = 0;
+    this->transColor = 0;
     if (this->image)
         this->image->Release();
     this->image = nullptr;
 }
 
-EasyFont::EasyFont(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight, DWRITE_FONT_STYLE FontStyle)
+EasyFont::EasyFont(string fontName, int fontSize, DWRITE_FONT_WEIGHT fontWeight, DWRITE_FONT_STYLE fontStyle)
 {
-    this->Create(FontName, SIZE, FontWeight, FontStyle);
+    this->Create(fontName, fontSize, fontWeight, fontStyle);
 }
 
-void EasyFont::Create(string FontName, int SIZE, DWRITE_FONT_WEIGHT FontWeight, DWRITE_FONT_STYLE FontStyle)
+void EasyFont::Create(string fontName, int fontSize, DWRITE_FONT_WEIGHT fontWeight, DWRITE_FONT_STYLE fontStyle)
 {
-    if (!EasyPainting::EasyPaintingStartFlag)
-        EasyPainting::LoadFont.push_back({this, {FontName, (float)SIZE, FontWeight, FontStyle}});
+    if (!EasyPainting::easyPaintingStartFlag)
+        EasyPainting::registerLoadFont.push_back({this, {fontName, (float)fontSize, fontWeight, fontStyle}});
     else
-        this->LoadIt({FontName, (float)SIZE, FontWeight, FontStyle});
+        this->LoadIt({fontName, (float)fontSize, fontWeight, fontStyle});
 }
 
-IDWriteTextFormat *__Easy_CreateTextFormat(string font, int size, DWRITE_FONT_WEIGHT FontWeight, DWRITE_FONT_STYLE FontStyle)
+IDWriteTextFormat *__Easy_CreateTextFormat(string font, int size, DWRITE_FONT_WEIGHT fontWeight, DWRITE_FONT_STYLE fontStyle)
 {
     using namespace EasyPainting;
     wstring wfont = __Easy_gbk_to_wstring(font);
     IDWriteTextFormat *pTextFormat = nullptr;
-    pWriteFactory->CreateTextFormat(wfont.c_str(), nullptr, FontWeight,
-                                    FontStyle, DWRITE_FONT_STRETCH_NORMAL,
+    pWriteFactory->CreateTextFormat(wfont.c_str(), nullptr, fontWeight,
+                                    fontStyle, DWRITE_FONT_STRETCH_NORMAL,
                                     size, L"zh-cn", &pTextFormat);
     return pTextFormat;
 }
+
 void EasyFont::LoadIt(EasyPainting::__Easy_Font_Info info)
 {
-    this->pFont = __Easy_CreateTextFormat(info.FontName, info.SIZE, info.FontWeight, info.FontStyle);
+    this->pFont = __Easy_CreateTextFormat(info.fontName, info.fontSize, info.fontWeight, info.fontStyle);
 }
+
 EasyFont::EasyFont(void) {}
-void EasyFont::Print(string text, int x, int y, EasyPixel color, ID2D1DeviceContext *pRenderTarget)
+
+D2D1_MATRIX_3X2_F __Easy_GetTransformMatrix(EasyPoint &p0, float &angle1, float &angle2, float &scalew, float &scaleh)
 {
-    pRenderTarget->SetTransform(D2D1::Matrix3x2F::Translation(0, 0));
+    angle1 *= PI_over_180;
+    angle2 *= PI_over_180;
+
+    D2D1_MATRIX_3X2_F matrix = {
+        cos(angle1),
+        sin(angle1),
+        cos(angle2),
+        sin(angle2),
+        0,
+        0};
+
+    matrix = D2D1::Matrix3x2F::Scale(D2D1::SizeF(scalew, scaleh)) * matrix;
+
+    matrix = matrix * D2D1::Matrix3x2F::Translation(p0.x, p0.y);
+
+    return matrix;
+}
+
+void EasyFont::Print(string text, float x, float y, EasyPixel color)
+{
     ID2D1SolidColorBrush *pBrush = nullptr;
-    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &pBrush);
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1::ColorF(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &pBrush);
     wstring wtext = __Easy_gbk_to_wstring(text);
-    pRenderTarget->DrawText(wtext.c_str(),                             // 要绘制的文本
-                            wtext.length(),                            // 文本长度
-                            this->pFont,                               // 文本格式
-                            D2D1::RectF(x, y, 0x7fffffff, 0x7fffffff), // 绘制区域
-                            pBrush                                     // 画笔
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    EasyPainting::threadRenderTarget->DrawText(wtext.c_str(),                             // 要绘制的文本
+                                               wtext.length(),                            // 文本长度
+                                               this->pFont,                               // 文本格式
+                                               D2D1::RectF(x, y, 0x7fffffff, 0x7fffffff), // 绘制区域
+                                               pBrush                                     // 画笔
     );
     pBrush->Release();
+}
+
+void EasyFont::Print(string text, float x, float y, EasyBrush &brush)
+{
+    wstring wtext = __Easy_gbk_to_wstring(text);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    EasyPainting::threadRenderTarget->DrawText(wtext.c_str(),                             // 要绘制的文本
+                                               wtext.length(),                            // 文本长度
+                                               this->pFont,                               // 文本格式
+                                               D2D1::RectF(x, y, 0x7fffffff, 0x7fffffff), // 绘制区域
+                                               brush.pBrush                               // 画笔
+    );
+}
+
+void EasyFont::PrintEx(string text, float x, float y, float width, float height, EasyBrush &brush, EasyPoint center, float rotation)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Rotation(rotation, D2D1::Point2F(center.x, center.y)));
+    wstring wtext = __Easy_gbk_to_wstring(text);
+    EasyPainting::threadRenderTarget->DrawText(wtext.c_str(),
+                                               wtext.length(),
+                                               this->pFont,
+                                               D2D1::RectF(x, y, x + width, y + height),
+                                               brush.pBrush);
+}
+
+void EasyFont::PrintEx(string text, float x, float y, float width, float height, EasyPixel color, EasyPoint center, float rotation)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Rotation(rotation, D2D1::Point2F(center.x, center.y)));
+    wstring wtext = __Easy_gbk_to_wstring(text);
+    ID2D1SolidColorBrush *pBrush = nullptr;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1::ColorF(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &pBrush);
+    EasyPainting::threadRenderTarget->DrawText(wtext.c_str(),
+                                               wtext.length(),
+                                               this->pFont,
+                                               D2D1::RectF(x, y, x + width, y + height),
+                                               pBrush);
+    pBrush->Release();
+}
+
+void EasyFont::PrintEx(string text, float width, float height, EasyBrush &brush, EasyPoint p0, float angle1, float angle2, float scalew, float scaleh)
+{
+    D2D1_MATRIX_3X2_F matrix = __Easy_GetTransformMatrix(p0, angle1, angle2, scalew, scaleh);
+    EasyPainting::threadRenderTarget->SetTransform(matrix);
+    wstring wtext = __Easy_gbk_to_wstring(text);
+    if (width == 0)
+        width = 0x7fffffff;
+    if (height == 0)
+        height = 0x7fffffff;
+    EasyPainting::threadRenderTarget->DrawText(wtext.c_str(),
+                                               wtext.length(),
+                                               this->pFont,
+                                               D2D1::RectF(0, 0, width, height),
+                                               brush.pBrush);
+}
+
+void EasyFont::PrintEx(string text, float width, float height, EasyPixel color, EasyPoint p0, float angle1, float angle2, float scalew, float scaleh)
+{
+    EasyBrush brush;
+    brush.CreateSolid(color);
+    this->PrintEx(text, width, height, brush, p0, angle1, angle2, scalew, scaleh);
 }
 
 void EasyFont::Release(void)
@@ -1411,10 +1607,19 @@ void EasyBuffer::StartUp(int width, int height)
     this->width = width;
     this->height = height;
 
-    if (!EasyPaintingStartFlag)
+    if (!easyPaintingStartFlag)
+    {
+        registerLoadBuffer.push_back(this);
         return;
+    }
 
-    pD2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &this->pBufferDevice);
+    if (this->pBufferDevice == nullptr)
+        pD2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &this->pBufferDevice);
+
+    this->pBufferDevice->SetTarget(nullptr);
+
+    if (this->pBufferBitmap)
+        this->pBufferBitmap->Release();
 
     auto CreateBufferBitmap = [&](ID2D1DeviceContext *pDevice, int width, int height) -> ID2D1Bitmap1 *
     {
@@ -1430,14 +1635,13 @@ void EasyBuffer::StartUp(int width, int height)
         return bitmap;
     };
 
-    this->BufferBitmap = CreateBufferBitmap(this->pBufferDevice, width, height);
+    this->pBufferBitmap = CreateBufferBitmap(this->pBufferDevice, width, height);
 
-    this->pBufferDevice->SetTarget(this->BufferBitmap);
+    this->pBufferDevice->SetTarget(this->pBufferBitmap);
 }
 
 void EasyBuffer::DrawStart()
 {
-    this->mtx.lock();
     this->pBufferDevice->BeginDraw();
 }
 
@@ -1445,7 +1649,11 @@ void EasyBuffer::DrawEnd()
 {
     this->pBufferDevice->SetTransform(D2D1::Matrix3x2F::Identity());
     this->pBufferDevice->EndDraw();
-    this->mtx.unlock();
+}
+
+void EasyBufferBase::UseAsRenderTarget()
+{
+    EasyPainting::threadRenderTarget = this->pBufferDevice;
 }
 
 void EasyBufferBase::Clear(EasyPixel color)
@@ -1453,46 +1661,130 @@ void EasyBufferBase::Clear(EasyPixel color)
     this->pBufferDevice->Clear(D2D1::ColorF(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f));
 }
 
-void EasyBuffer::Render(int x, int y, ID2D1DeviceContext *pRenderTarget)
+void EasyGeometryPainter::DrawRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color, float thickness)
 {
-    this->mtx.lock();
-    pRenderTarget->DrawBitmap(this->BufferBitmap, D2D1::RectF(x, y, x + this->width, y + this->height));
-    this->mtx.unlock();
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawRectangle(x, y, width, height, thickness, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::DrawRectangle(int x, int y, int width, int height, EasyPixel color, float thickness)
+void EasyGeometryPainter::DrawLineEx(D2D1_MATRIX_3X2_F transform, EasyPoint point0, EasyPoint point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle)
 {
-    EasyDrawRectangle(x, y, width, height, color, thickness, this->pBufferDevice);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawLine(point0, point1, thickness, capStyle, dashStyle, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::DrawLine(DXY point0, DXY point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle)
+void EasyGeometryPainter::DrawRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color, float thickness, float radiusX, float radiusY)
 {
-    EasyDrawLine(point0, point1, color, thickness, this->pBufferDevice, capStyle, dashStyle);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawRoundedRectangle(x, y, width, height, thickness, radiusX, radiusY, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::DrawRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float thickness, float radiusX, float radiusY)
+void EasyGeometryPainter::DrawEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, EasyPixel color, float radiusX, float radiusY, float thickness)
 {
-    EasyDrawRoundedRectangle(x, y, width, height, color, thickness, radiusX, radiusY, this->pBufferDevice);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawEllipse(x, y, radiusX, radiusY, thickness, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::DrawEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY, float thickness)
+void EasyGeometryPainter::FillRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color)
 {
-    EasyDrawEllipse(x, y, color, radiusX, radiusY, thickness, this->pBufferDevice);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyFillRectangle(x, y, width, height, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::FillRectangle(int x, int y, int width, int height, EasyPixel color)
+void EasyGeometryPainter::FillRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, EasyPixel color, float radiusX, float radiusY)
 {
-    EasyFillRectangle(x, y, width, height, color, this->pBufferDevice);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyFillRoundedRectangle(x, y, width, height, radiusX, radiusY, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::FillRoundedRectangle(int x, int y, int width, int height, EasyPixel color, float radiusX, float radiusY)
+void EasyGeometryPainter::FillEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, EasyPixel color, float radiusX, float radiusY)
 {
-    EasyFillRoundedRectangle(x, y, width, height, color, radiusX, radiusY, this->pBufferDevice);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyFillEllipse(x, y, radiusX, radiusY, brush);
+    brush->Release();
 }
 
-void EasyBufferBase::FillEllipse(int x, int y, EasyPixel color, float radiusX, float radiusY)
+void EasyGeometryPainter::DrawRectangle(float x, float y, float width, float height, EasyPixel color, float thickness)
 {
-    EasyFillEllipse(x, y, color, radiusX, radiusY, this->pBufferDevice);
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawRectangle(x, y, width, height, thickness, brush);
+    brush->Release();
+}
+
+void EasyGeometryPainter::DrawLine(EasyPoint point0, EasyPoint point1, EasyPixel color, float thickness, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawLine(point0, point1, thickness, capStyle, dashStyle, brush);
+    brush->Release();
+}
+
+void EasyGeometryPainter::DrawRoundedRectangle(float x, float y, float width, float height, EasyPixel color, float thickness, float radiusX, float radiusY)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawRoundedRectangle(x, y, width, height, thickness, radiusX, radiusY, brush);
+    brush->Release();
+}
+
+void EasyGeometryPainter::DrawEllipse(float x, float y, EasyPixel color, float radiusX, float radiusY, float thickness)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawEllipse(x, y, radiusX, radiusY, thickness, brush);
+    brush->Release();
+}
+
+void EasyGeometryPainter::FillRectangle(float x, float y, float width, float height, EasyPixel color)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyFillRectangle(x, y, width, height, brush);
+    brush->Release();
+}
+
+void EasyGeometryPainter::FillRoundedRectangle(float x, float y, float width, float height, EasyPixel color, float radiusX, float radiusY)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyFillRoundedRectangle(x, y, width, height, radiusX, radiusY, brush);
+    brush->Release();
+}
+
+void EasyGeometryPainter::FillEllipse(float x, float y, EasyPixel color, float radiusX, float radiusY)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyFillEllipse(x, y, radiusX, radiusY, brush);
+    brush->Release();
 }
 
 EasyBufferBase::operator ID2D1DeviceContext *()
@@ -1504,12 +1796,12 @@ EasyBufferBase::operator ID2D1DeviceContext **() { return &this->pBufferDevice; 
 
 void EasyBuffer::Release()
 {
-    if (this->BufferBitmap)
-        this->BufferBitmap->Release();
+    if (this->pBufferBitmap)
+        this->pBufferBitmap->Release();
     if (this->pBufferDevice)
         this->pBufferDevice->Release();
     this->pBufferDevice = nullptr;
-    this->BufferBitmap = nullptr;
+    this->pBufferBitmap = nullptr;
 }
 
 EasyBuffer::~EasyBuffer()
@@ -1525,22 +1817,20 @@ EasyPixel::EasyPixel(D2D1_COLOR_F color) : a(color.a * 255.0), r(color.r * 255.0
 EasyPixel::operator COLORREF() { return RGB(this->r, this->g, this->b); }
 EasyPixel::operator D2D1_COLOR_F() { return D2D1::ColorF(this->r / 255.0f, this->g / 255.0f, this->b / 255.0f, this->a / 255.0f); }
 
-void EasyEffect::StartUp(ID2D1Bitmap1 *bitmap, ID2D1DeviceContext *pRenderTarget)
+void EasyEffect::StartUp(ID2D1Bitmap1 *bitmap)
 {
     this->bitmap = bitmap;
-    this->pRenderTarget = pRenderTarget;
 }
 
-void EasyEffect::StartUp(EasySurface *surface, ID2D1DeviceContext *pRenderTarget)
+void EasyEffect::StartUp(EasySurface &surface)
 {
-    this->bitmap = surface->image;
-    this->pRenderTarget = pRenderTarget;
+    this->bitmap = surface.image;
 }
 
 void EasyEffect::PushEffect(REFCLSID effectId)
 {
     ID2D1Effect *effect = nullptr;
-    pRenderTarget->CreateEffect(effectId, &effect);
+    EasyPainting::threadRenderTarget->CreateEffect(effectId, &effect);
 
     if (this->effects.empty())
     {
@@ -1674,7 +1964,7 @@ EasyEffect &EasyEffect::PushCrop(int x, int y, int width, int height)
     return *this;
 }
 
-void EasyEffect::Render(int x, int y, float rotation, int midpointx, int midpointy, int reverse)
+void EasyEffect::Render(int x, int y, float rotation, int midpointx, int midpointy, float scaleX, float scaleY, int reverse)
 {
     if (this->effects.empty())
         return;
@@ -1685,17 +1975,27 @@ void EasyEffect::Render(int x, int y, float rotation, int midpointx, int midpoin
 
     Matrix = D2D1::Matrix3x2F::Rotation(rotation, center) * Matrix;
 
-    int scaleX = 1, scaleY = 1;
+    int RevScaleX = 1, RevScaleY = 1;
 
     if (reverse & EASY_TURNLR)
-        scaleX = -1;
+        RevScaleX = -1;
     if (reverse & EASY_TURNUD)
-        scaleY = -1;
+        RevScaleY = -1;
 
-    Matrix = D2D1::Matrix3x2F::Scale(scaleX, scaleY, center) * Matrix;
+    Matrix = D2D1::Matrix3x2F::Scale(RevScaleX, RevScaleY, center) * Matrix;
 
-    pRenderTarget->SetTransform(Matrix);
-    pRenderTarget->DrawImage(this->effects.back());
+    Matrix = D2D1::Matrix3x2F::Scale(scaleX, scaleY, {0, 0}) * Matrix;
+
+    EasyPainting::threadRenderTarget->SetTransform(Matrix);
+    EasyPainting::threadRenderTarget->DrawImage(this->effects.back());
+}
+
+void EasyEffect::RenderMatrix(D2D1_MATRIX_3X2_F &matrix)
+{
+    if (this->effects.empty())
+        return;
+    EasyPainting::threadRenderTarget->SetTransform(matrix);
+    EasyPainting::threadRenderTarget->DrawImage(this->effects.back());
 }
 
 EasyEffect::~EasyEffect()
@@ -1733,20 +2033,115 @@ void EasyGeometryPath::AddLine(float x, float y)
     sink->AddLine(D2D1::Point2F(x, y));
 }
 
-void EasyGeometryPath::DrawGeometry(EasyPixel color, float thickness, ID2D1DeviceContext *pRenderTarget)
+void EasyGeometryPath::AddArc(float x, float y, float radiusX, float radiusY, int sweepDirection, int arcSize, float rotationAngle)
+{
+    D2D1_ARC_SEGMENT arc = {};
+    arc.point = D2D1::Point2F(x, y);
+    arc.size = D2D1::SizeF(radiusX, radiusY);
+    arc.rotationAngle = rotationAngle;
+    arc.arcSize = (D2D1_ARC_SIZE)arcSize;
+    arc.sweepDirection = (D2D1_SWEEP_DIRECTION)sweepDirection;
+
+    sink->AddArc(arc);
+}
+
+void EasyGeometryPath::AddQuadraticBezier(EasyPoint target, EasyPoint control)
+{
+    sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(control.x, control.y),
+                                                          D2D1::Point2F(target.x, target.y)));
+}
+
+void EasyGeometryPath::AddBezier(EasyPoint target1, EasyPoint control1, EasyPoint control2)
+{
+    sink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(control1.x, control1.y),
+                                        D2D1::Point2F(control2.x, control2.y),
+                                        D2D1::Point2F(target1.x, target1.y)));
+}
+
+void EasyGeometryPath::DrawGeometry(EasyBrush &brush, float thickness)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    EasyPainting::threadRenderTarget->DrawGeometry(pathGeometry, brush.pBrush, thickness);
+}
+
+void EasyGeometryPath::DrawGeometryEx(D2D1_MATRIX_3X2_F transform, EasyBrush &brush, float thickness)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    EasyPainting::threadRenderTarget->DrawGeometry(pathGeometry, brush.pBrush, thickness);
+}
+
+void EasyGeometryPath::DrawGeometryEx(EasyBrush &brush, float thickness, EasyPoint p0, float angle1, float angle2, float scalew, float scaleh)
+{
+    EasyPainting::threadRenderTarget->SetTransform(__Easy_GetTransformMatrix(p0, angle1, angle2, scalew, scaleh));
+    EasyPainting::threadRenderTarget->DrawGeometry(pathGeometry, brush.pBrush, thickness);
+}
+
+void EasyGeometryPath::FillGeometry(EasyBrush &brush)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    EasyPainting::threadRenderTarget->FillGeometry(pathGeometry, brush.pBrush);
+}
+
+void EasyGeometryPath::FillGeometryEx(D2D1_MATRIX_3X2_F transform, EasyBrush &brush)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    EasyPainting::threadRenderTarget->FillGeometry(pathGeometry, brush.pBrush);
+}
+
+void EasyGeometryPath::FillGeometryEx(EasyBrush &brush, EasyPoint p0, float angle1, float angle2, float scalew, float scaleh)
+{
+    EasyPainting::threadRenderTarget->SetTransform(__Easy_GetTransformMatrix(p0, angle1, angle2, scalew, scaleh));
+    EasyPainting::threadRenderTarget->FillGeometry(pathGeometry, brush.pBrush);
+}
+
+void EasyGeometryPath::DrawGeometry(EasyPixel color, float thickness)
 {
     ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->DrawGeometry(pathGeometry, brush, thickness);
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    EasyPainting::threadRenderTarget->DrawGeometry(pathGeometry, brush, thickness);
     brush->Release();
 }
 
-void EasyGeometryPath::FillGeometry(EasyPixel color, ID2D1DeviceContext *pRenderTarget)
+void EasyGeometryPath::DrawGeometryEx(D2D1_MATRIX_3X2_F transform, EasyPixel color, float thickness)
 {
     ID2D1SolidColorBrush *brush;
-    pRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
-    pRenderTarget->FillGeometry(pathGeometry, brush);
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    EasyPainting::threadRenderTarget->DrawGeometry(pathGeometry, brush, thickness);
     brush->Release();
+}
+
+void EasyGeometryPath::DrawGeometryEx(EasyPixel color, float thickness, EasyPoint p0, float angle1, float angle2, float scalew, float scaleh)
+{
+    EasyBrush brush;
+    brush.CreateSolid(color);
+    this->DrawGeometryEx(brush, thickness, p0, angle1, angle2, scalew, scaleh);
+}
+
+void EasyGeometryPath::FillGeometry(EasyPixel color)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    EasyPainting::threadRenderTarget->FillGeometry(pathGeometry, brush);
+    brush->Release();
+}
+
+void EasyGeometryPath::FillGeometryEx(D2D1_MATRIX_3X2_F transform, EasyPixel color)
+{
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    EasyPainting::threadRenderTarget->FillGeometry(pathGeometry, brush);
+    brush->Release();
+}
+
+void EasyGeometryPath::FillGeometryEx(EasyPixel color, EasyPoint p0, float angle1, float angle2, float scalew, float scaleh)
+{
+    EasyBrush brush;
+    brush.CreateSolid(color);
+    this->FillGeometryEx(brush, p0, angle1, angle2, scalew, scaleh);
 }
 
 void EasyGeometryPath::Release()
@@ -1783,13 +2178,16 @@ void EasyPaintingDevice::SetVSync(bool enable)
     EasyPainting::enableVSync = enable;
 }
 
-void EasyPaintingDevice::SetWindow(HWND window, int WindowWidth, int WindowHeight, EasyPixel BackColor)
+void EasyPaintingDevice::SetWindow(HWND window, int windowWidth, int windowHeight, EasyPixel backColor)
 {
     using namespace EasyPainting;
-    pTargetBitmap->Release();
-    pSwapChain->Release();
-    __Easy_SetWindow(window, WindowWidth, WindowHeight);
-    EasyPainting::hBackColor = BackColor;
+    pRenderTarget->SetTarget(nullptr);
+    if (pTargetBitmap)
+        pTargetBitmap->Release();
+    if (pSwapChain)
+        pSwapChain->Release();
+    __Easy_SetWindow(window, windowWidth, windowHeight);
+    EasyPainting::hBackColor = backColor;
     easyScreenBuffer->pBufferDevice = pRenderTarget;
 }
 
@@ -1805,10 +2203,228 @@ void EasyPaintingDevice::SetInterpolationMode(int mode)
     switch (mode)
     {
     case EASY_LINEAR_MODE:
-        EasyPainting::easyInterpolationMode = D2D1_BITMAP_INTERPOLATION_MODE_LINEAR;
+        EasyPainting::easyInterpolationMode = D2D1_INTERPOLATION_MODE_LINEAR;
         break;
     case EASY_NEAREST_MODE:
-        EasyPainting::easyInterpolationMode = D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
+        EasyPainting::easyInterpolationMode = D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
+        break;
+    case EASY_CUBIC_MODE:
+        EasyPainting::easyInterpolationMode = D2D1_INTERPOLATION_MODE_CUBIC;
+        break;
+    case EASY_HIGH_QUALITY_CUBIC_MODE:
+        EasyPainting::easyInterpolationMode = D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC;
+        break;
+    case EASY_ANISOTROPIC_MODE:
+        EasyPainting::easyInterpolationMode = D2D1_INTERPOLATION_MODE_ANISOTROPIC;
         break;
     }
 }
+
+EasyBrush::~EasyBrush()
+{
+    this->Release();
+}
+
+void EasyBrush::Release()
+{
+    if (pBrush)
+        pBrush->Release();
+    pBrush = nullptr;
+}
+
+void EasyBrush::CreateSolid(EasyPixel color)
+{
+    using namespace EasyPainting;
+    ID2D1SolidColorBrush *brush;
+    EasyPainting::threadRenderTarget->CreateSolidColorBrush(D2D1_COLOR_F(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f), &brush);
+
+    if (this->pBrush)
+        this->pBrush->Release();
+    this->pBrush = brush;
+}
+
+void EasyBrush::CreateLinearGradientBrush(vector<pair<float, EasyPixel>> &stops, EasyPoint start, EasyPoint end)
+{
+    using namespace EasyPainting;
+
+    if (stops.empty())
+        return;
+
+    D2D1_GRADIENT_STOP *gradientStops = new D2D1_GRADIENT_STOP[stops.size()];
+    for (int i = 0; i < stops.size(); i++)
+    {
+        gradientStops[i].position = stops[i].first;
+        gradientStops[i].color = stops[i].second;
+    }
+
+    ID2D1GradientStopCollection *pGradientStops = nullptr;
+    HRESULT hr = EasyPainting::pRenderTarget->CreateGradientStopCollection(
+        gradientStops,
+        stops.size(),
+        &pGradientStops);
+
+    delete[] gradientStops;
+
+    if (FAILED(hr))
+        return;
+
+    ID2D1LinearGradientBrush *pLinearGradientBrush = nullptr;
+    D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES lgBrushProps =
+        D2D1::LinearGradientBrushProperties(
+            D2D1::Point2F(start.x, start.y), // 渐变起点
+            D2D1::Point2F(end.x, end.y)      // 渐变终点
+        );
+
+    hr = EasyPainting::pRenderTarget->CreateLinearGradientBrush(
+        lgBrushProps,
+        pGradientStops,
+        &pLinearGradientBrush);
+
+    pGradientStops->Release();
+
+    if (FAILED(hr))
+        return;
+
+    if (this->pBrush)
+        this->pBrush->Release();
+
+    this->pBrush = pLinearGradientBrush;
+
+    return;
+}
+
+void EasyBrush::CreateRadialGradientBrush(vector<pair<float, EasyPixel>> &stops, EasyPoint center, EasyPoint offset, float radiusX, float radiusY)
+{
+    if (stops.empty())
+        return;
+
+    D2D1_GRADIENT_STOP *gradientStops = new D2D1_GRADIENT_STOP[stops.size()];
+    for (int i = 0; i < stops.size(); i++)
+    {
+        gradientStops[i].position = stops[i].first;
+        gradientStops[i].color = stops[i].second;
+    }
+
+    ID2D1GradientStopCollection *pGradientStops = nullptr;
+    HRESULT hr = EasyPainting::pRenderTarget->CreateGradientStopCollection(
+        gradientStops,
+        stops.size(),
+        &pGradientStops);
+
+    delete[] gradientStops;
+
+    if (FAILED(hr))
+        return;
+
+    // 3. 创建径向渐变画刷
+    ID2D1RadialGradientBrush *pRadialGradientBrush = nullptr;
+    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES rgBrushProps =
+        D2D1::RadialGradientBrushProperties(
+            D2D1::Point2F(center.x, center.y), // 圆心
+            D2D1::Point2F(offset.x, offset.y), // 偏移量
+            radiusX,                           // 半径X
+            radiusY                            // 半径Y
+        );
+
+    hr = EasyPainting::pRenderTarget->CreateRadialGradientBrush(
+        rgBrushProps,
+        pGradientStops,
+        &pRadialGradientBrush);
+
+    pGradientStops->Release();
+
+    if (FAILED(hr))
+        return;
+
+    if (this->pBrush)
+        this->pBrush->Release();
+
+    this->pBrush = pRadialGradientBrush;
+}
+
+void EasyBrush::CreateBitmapBrush(EasySurface &surface, int offsetx, int offsety)
+{
+    ID2D1BitmapBrush *pBitmapBrush = nullptr;
+    EasyPainting::threadRenderTarget->CreateBitmapBrush(surface.image, &pBitmapBrush);
+
+    pBitmapBrush->SetTransform(D2D1::Matrix3x2F::Translation(offsetx, offsety));
+
+    if (this->pBrush)
+        this->pBrush->Release();
+
+    this->pBrush = pBitmapBrush;
+}
+
+void EasyBrush::DrawRectangle(float x, float y, float width, float height, float thickness)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawRectangle(x, y, width, height, thickness, this->pBrush);
+}
+void EasyBrush::DrawLine(EasyPoint point0, EasyPoint point1, float thickness, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawLine(point0, point1, thickness, capStyle, dashStyle, this->pBrush);
+}
+void EasyBrush::DrawRoundedRectangle(float x, float y, float width, float height, float thickness, float radiusX, float radiusY)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawRoundedRectangle(x, y, width, height, thickness, radiusX, radiusY, this->pBrush);
+}
+void EasyBrush::DrawEllipse(float x, float y, float radiusX, float radiusY, float thickness)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyDrawEllipse(x, y, radiusX, radiusY, thickness, this->pBrush);
+}
+void EasyBrush::FillRectangle(float x, float y, float width, float height)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyFillRectangle(x, y, width, height, this->pBrush);
+}
+void EasyBrush::FillRoundedRectangle(float x, float y, float width, float height, float radiusX, float radiusY)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyFillRoundedRectangle(x, y, width, height, radiusX, radiusY, this->pBrush);
+}
+void EasyBrush::FillEllipse(float x, float y, float radiusX, float radiusY)
+{
+    EasyPainting::threadRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+    __Easy_EasyFillEllipse(x, y, radiusX, radiusY, this->pBrush);
+}
+
+void EasyBrush::DrawRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, float thickness)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawRectangle(x, y, width, height, thickness, this->pBrush);
+}
+void EasyBrush::DrawLineEx(D2D1_MATRIX_3X2_F transform, EasyPoint point0, EasyPoint point1, float thickness, D2D1_CAP_STYLE capStyle, D2D1_DASH_STYLE dashStyle)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawLine(point0, point1, thickness, capStyle, dashStyle, this->pBrush);
+}
+void EasyBrush::DrawRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, float thickness, float radiusX, float radiusY)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawRoundedRectangle(x, y, width, height, thickness, radiusX, radiusY, this->pBrush);
+}
+void EasyBrush::DrawEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, float radiusX, float radiusY, float thickness)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyDrawEllipse(x, y, radiusX, radiusY, thickness, this->pBrush);
+}
+void EasyBrush::FillRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyFillRectangle(x, y, width, height, this->pBrush);
+}
+void EasyBrush::FillRoundedRectangleEx(D2D1_MATRIX_3X2_F transform, float x, float y, float width, float height, float radiusX, float radiusY)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyFillRoundedRectangle(x, y, width, height, radiusX, radiusY, this->pBrush);
+}
+void EasyBrush::FillEllipseEx(D2D1_MATRIX_3X2_F transform, float x, float y, float radiusX, float radiusY)
+{
+    EasyPainting::threadRenderTarget->SetTransform(transform);
+    __Easy_EasyFillEllipse(x, y, radiusX, radiusY, this->pBrush);
+}
+
+#endif // EASYPAINTING_CPP
